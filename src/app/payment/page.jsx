@@ -1,6 +1,7 @@
 "use client";
 import React, { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 
 // Helper function to load Razorpay script dynamically
 const loadRazorpayScript = () => {
@@ -155,9 +156,34 @@ export default function PaymentPage() {
           </button>
 
           <div className="mt-6 text-center">
-            <p className="text-xs text-gray-500">
+            <p className="text-xs text-gray-500 mb-4">
               This is a demo payment. No real transaction will be processed.
             </p>
+            
+            {/* Policy Links */}
+            <div className="border-t border-gray-200 pt-4 mt-6">
+              <div className="flex flex-wrap justify-center gap-4 text-xs text-gray-600">
+                <Link href="/refund" className="hover:text-indigo-600 hover:underline">
+                  Cancellation & Refund
+                </Link>
+                <span className="text-gray-300">|</span>
+                <Link href="/contact-us" className="hover:text-indigo-600 hover:underline">
+                  Contact us
+                </Link>
+                <span className="text-gray-300">|</span>
+                <Link href="/privacy" className="hover:text-indigo-600 hover:underline">
+                  Privacy
+                </Link>
+                <span className="text-gray-300">|</span>
+                <Link href="/terms" className="hover:text-indigo-600 hover:underline">
+                  Terms & Conditions
+                </Link>
+                <span className="text-gray-300">|</span>
+                <Link href="/shipping" className="hover:text-indigo-600 hover:underline">
+                  Shipping
+                </Link>
+              </div>
+            </div>
           </div>
         </div>
       </div>

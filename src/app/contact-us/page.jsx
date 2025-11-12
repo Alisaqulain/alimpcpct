@@ -1,9 +1,24 @@
-import React from "react";
+import { Metadata } from "next";
+import Link from "next/link";
 import { Phone, Mail, Globe } from "lucide-react";
+
+export const metadata = {
+  title: "Contact Us | MPCPCT - Get in Touch with Support Team",
+  description:
+    "Contact MPCPCT support team for questions, suggestions, feedback, or technical assistance. Email: Mpcpct111@gmail.com | Phone: 8989966753",
+  keywords:
+    "contact MPCPCT, MPCPCT support, customer service, help desk, contact information, support team",
+  openGraph: {
+    title: "Contact Us | MPCPCT",
+    description: "Get in touch with MPCPCT support team",
+    type: "website",
+  },
+};
 
 export default function ContactUs() {
   return (
-    <div className="max-w-xl mx-auto bg-white p-6 rounded-lg shadow-md space-y-6 text-center">
+    <div className="min-h-screen bg-gray-50 py-12 px-4">
+      <div className="max-w-xl mx-auto bg-white p-6 rounded-lg shadow-md space-y-6 text-center">
       {/* Heading */}
       <div>
         <h1 className="text-2xl font-bold text-gray-900 mb-2">Contact Us</h1>
@@ -57,6 +72,17 @@ export default function ContactUs() {
             Message Me
           </button>
         </div>
+      </div>
+
+      </div>
+
+      <div className="max-w-xl mx-auto mt-8 text-center">
+        <Link
+          href="/"
+          className="inline-block text-indigo-600 hover:text-indigo-700 font-medium"
+        >
+          ← Back to Home
+        </Link>
       </div>
     </div>
   );
