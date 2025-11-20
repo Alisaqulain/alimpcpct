@@ -11,13 +11,21 @@ export function OrganizationSchema({ siteUrl }) {
     "alternateName": "MPCPCT - CPCT, RSCIT, CCC Exam Practice Platform",
     "url": siteUrl,
     "logo": `${siteUrl}/logo2.png`,
-    "description": "Practice CPCT, RSCIT, and CCC exams with bilingual support (Hindi & English), real-time results, comprehensive learning materials, and expert guidance.",
+    "image": `${siteUrl}/logo2.png`,
+    "description": "Best CPCT, RSCIT, and CCC exam preparation platform in Indore, Madhya Pradesh. Practice typing in Hindi & English, get real-time results, comprehensive learning materials, and expert guidance.",
     "contactPoint": {
       "@type": "ContactPoint",
       "telephone": "+91-8989966753",
       "contactType": "Customer Service",
       "email": "Mpcpct111@gmail.com",
-      "areaServed": "IN",
+      "areaServed": {
+        "@type": "City",
+        "name": "Indore",
+        "containedIn": {
+          "@type": "State",
+          "name": "Madhya Pradesh"
+        }
+      },
       "availableLanguage": ["en", "hi"]
     },
     "sameAs": [
@@ -29,7 +37,8 @@ export function OrganizationSchema({ siteUrl }) {
     "address": {
       "@type": "PostalAddress",
       "addressCountry": "IN",
-      "addressRegion": "Madhya Pradesh"
+      "addressRegion": "Madhya Pradesh",
+      "addressLocality": "Indore"
     }
   };
 
@@ -144,6 +153,65 @@ export function BreadcrumbSchema({ items, siteUrl }) {
   );
 }
 
+export function LocalBusinessSchema({ siteUrl }) {
+  const schema = {
+    "@context": "https://schema.org",
+    "@type": "EducationalOrganization",
+    "@id": `${siteUrl}#organization`,
+    "name": "MPCPCT",
+    "alternateName": "MPCPCT - CPCT, RSCIT, CCC Exam Practice Platform",
+    "url": siteUrl,
+    "logo": `${siteUrl}/logo2.png`,
+    "image": `${siteUrl}/logo2.png`,
+    "description": "Best CPCT, RSCIT, and CCC exam preparation platform in Indore, Madhya Pradesh. Practice typing in Hindi & English, get real-time results, comprehensive learning materials, and expert guidance.",
+    "address": {
+      "@type": "PostalAddress",
+      "streetAddress": "Indore",
+      "addressLocality": "Indore",
+      "addressRegion": "Madhya Pradesh",
+      "postalCode": "452001",
+      "addressCountry": "IN"
+    },
+    "geo": {
+      "@type": "GeoCoordinates",
+      "latitude": "22.7196",
+      "longitude": "75.8577"
+    },
+    "telephone": "+91-8989966753",
+    "email": "Mpcpct111@gmail.com",
+    "priceRange": "₹₹",
+    "openingHoursSpecification": {
+      "@type": "OpeningHoursSpecification",
+      "dayOfWeek": [
+        "Monday",
+        "Tuesday",
+        "Wednesday",
+        "Thursday",
+        "Friday",
+        "Saturday",
+        "Sunday"
+      ],
+      "opens": "00:00",
+      "closes": "23:59"
+    },
+    "areaServed": {
+      "@type": "City",
+      "name": "Indore",
+      "containedIn": {
+        "@type": "State",
+        "name": "Madhya Pradesh"
+      }
+    }
+  };
+
+  return (
+    <script
+      type="application/ld+json"
+      dangerouslySetInnerHTML={{ __html: JSON.stringify(schema) }}
+    />
+  );
+}
+
 export function ServiceSchema({ siteUrl }) {
   const schema = {
     "@context": "https://schema.org",
@@ -155,8 +223,12 @@ export function ServiceSchema({ siteUrl }) {
       "url": siteUrl
     },
     "areaServed": {
-      "@type": "Country",
-      "name": "India"
+      "@type": "City",
+      "name": "Indore",
+      "containedIn": {
+        "@type": "State",
+        "name": "Madhya Pradesh"
+      }
     },
     "hasOfferCatalog": {
       "@type": "OfferCatalog",

@@ -5,7 +5,7 @@ import { GeistMono } from "geist/font/mono";
 import Script from "next/script";
 import LayoutWrapper from "./components/LayoutWrapper";
 import { defaultMetadata } from "../lib/metadata";
-import { OrganizationSchema, WebSiteSchema, ServiceSchema } from "./components/SEO/StructuredData";
+import { OrganizationSchema, WebSiteSchema, ServiceSchema, LocalBusinessSchema } from "./components/SEO/StructuredData";
 
 const poppins = Poppins({
   subsets: ["latin"],
@@ -26,11 +26,19 @@ export default function RootLayout({ children }) {
       <head>
         <meta name="viewport" content="width=device-width, initial-scale=1" />
         <meta name="theme-color" content="#290c52" />
+        <meta name="geo.region" content="IN-MP" />
+        <meta name="geo.placename" content="Indore" />
+        <meta name="geo.position" content="22.7196;75.8577" />
+        <meta name="ICBM" content="22.7196, 75.8577" />
         <link rel="icon" href="/favicon.ico" />
-        <link rel="apple-touch-icon" href="/logo2.png" />
+        <link rel="icon" type="image/png" sizes="32x32" href="/logo2.png" />
+        <link rel="icon" type="image/png" sizes="16x16" href="/logo2.png" />
+        <link rel="apple-touch-icon" sizes="180x180" href="/logo2.png" />
+        <link rel="manifest" href="/manifest.json" />
         
         {/* Structured Data for SEO */}
         <OrganizationSchema siteUrl={siteUrl} />
+        <LocalBusinessSchema siteUrl={siteUrl} />
         <WebSiteSchema siteUrl={siteUrl} />
         <ServiceSchema siteUrl={siteUrl} />
         
