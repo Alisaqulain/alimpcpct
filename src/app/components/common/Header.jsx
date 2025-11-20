@@ -148,7 +148,7 @@ export default function Header() {
                   <a href="/exam">Exam Mode</a>
                 </li>
                 <li className="px-4 py-2 hover:bg-gray-200 cursor-pointer">
-                  <a href="/">Topic Wise MCQ</a>
+                  <a href="/topicwise">Topic Wise MCQ</a>
                 </li>
               </ul>
             </li>
@@ -172,13 +172,13 @@ export default function Header() {
                 }`}
               >
                 <li className="px-4 py-2 hover:bg-gray-200 cursor-pointer">
-                  <a href="/notes">Video Notes</a>
+                  <a href="/notes?type=video_notes">Video Notes</a>
                 </li>
                 <li className="px-4 py-2 hover:bg-gray-200 cursor-pointer">
-                  <a href="/notes">Pdf Notes</a>
+                  <a href="/notes?type=pdf_notes">Pdf Notes</a>
                 </li>
                 <li className="px-4 py-2 hover:bg-gray-200 cursor-pointer">
-                  <a href="/notes">Syllabus PDF</a>
+                  <a href="/notes?type=syllabus_pdf">Syllabus PDF</a>
                 </li>
               </ul>
             </li>
@@ -215,6 +215,7 @@ export default function Header() {
             <li className="hover:bg-blue-700 px-3 py-1 rounded"><a href="/about-us">About us</a></li>
             <li className="hover:bg-blue-700 px-3 py-1 rounded"><a href="/payment-app">Payment</a></li>
             <li className="hover:bg-blue-700 px-3 py-1 rounded"><a href="/contact-us">Contact Us</a></li>
+            <li className="hover:bg-blue-700 px-3 py-1 rounded"><a href="/faq">FAQ</a></li>
           </ul>
           <div className="flex items-center space-x-4 ml-4">
             {isAuthenticated ? (
@@ -272,7 +273,7 @@ export default function Header() {
                 <li><a href="/learning">Learning</a></li>
                 <li><a href="/skill_test">Skill Test</a></li>
                 <li><a href="/exam">Exam Mode</a></li>
-                <li><a href="/">Topic Wise MCQ</a></li>
+                <li><a href="/topicwise">Topic Wise MCQ</a></li>
               </ul>
             )}
           </li>
@@ -285,9 +286,9 @@ export default function Header() {
             </button>
             {openDropdown === "mobileDownload" && (
               <ul className="pl-4 space-y-1 pt-4 text-sm text-gray-300">
-                <li><a href="/notes">Video Notes</a></li>
-                <li><a href="/notes">Pdf Notes</a></li>
-                <li><a href="/notes">Syllabus PDF</a></li>
+                <li><a href="/notes?type=video_notes">Video Notes</a></li>
+                <li><a href="/notes?type=pdf_notes">Pdf Notes</a></li>
+                <li><a href="/notes?type=syllabus_pdf">Syllabus PDF</a></li>
               </ul>
             )}
           </li>
@@ -309,6 +310,7 @@ export default function Header() {
           <li className="border-b pt-5 py-2"><a href="/about-us">ABOUT US</a></li>
           <li className="border-b pt-5 py-2"><a href="/payment-app">PAYMENT</a></li>
           <li className="border-b pt-5 py-2"><a href="/contact-us">CONTACT US</a></li>
+          <li className="border-b pt-5 py-2"><a href="/faq">FAQ</a></li>
         </ul>
 
         <div className="flex justify-center items-center mt-10 px-4 space-x-2">

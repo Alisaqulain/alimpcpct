@@ -1,13 +1,20 @@
 import { NextResponse } from "next/server";
 import dbConnect from "@/lib/db";
 import Section from "@/lib/models/Section";
+import { jwtVerify } from "jose";
 
-function isAdmin(request) {
+const JWT_SECRET = process.env.JWT_SECRET || "secret123";
+
+async function requireAdmin(req) {
+  const token = req.cookies.get("token")?.value;
+  if (!token) return { ok: false, error: "Unauthorized" };
   try {
-    const cookie = request.headers.get('cookie') || '';
-    const role = cookie.includes('role=admin') ? 'admin' : null;
-    return role === 'admin';
-  } catch { return false; }
+    const { payload } = await jwtVerify(token, new TextEncoder().encode(JWT_SECRET));
+    if (payload.role !== "admin") return { ok: false, error: "Forbidden" };
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: "Unauthorized" };
+  }
 }
 
 export async function GET(request) {
@@ -19,12 +26,31 @@ export async function GET(request) {
   return NextResponse.json({ sections });
 }
 
-export async function POST(request) {
-  if (!isAdmin(request)) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  await dbConnect();
-  const body = await request.json();
-  const section = await Section.create(body);
-  return NextResponse.json({ section });
+export async function POST(req) {
+  try {
+    const auth = await requireAdmin(req);
+    if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.error === "Forbidden" ? 403 : 401 });
+    
+    await dbConnect();
+    
+    let body;
+    try {
+      body = await req.json();
+    } catch (parseError) {
+      return NextResponse.json({ error: "Invalid JSON in request body" }, { status: 400 });
+    }
+    
+    try {
+      const section = await Section.create(body);
+      return NextResponse.json({ section });
+    } catch (error) {
+      console.error('Error creating section:', error);
+      return NextResponse.json({ error: error.message || "Failed to create section" }, { status: 500 });
+    }
+  } catch (error) {
+    console.error('Unexpected error in POST /api/admin/sections:', error);
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+  }
 }
 
 

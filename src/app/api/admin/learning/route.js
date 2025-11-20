@@ -28,41 +28,179 @@ export async function GET(req) {
 }
 
 export async function POST(req) {
-  const auth = await requireAdmin(req);
-  if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.error === "Forbidden" ? 403 : 401 });
-  await dbConnect();
-  const body = await req.json();
-  const { type } = body;
-  if (type === "section") {
-    const { id, name, description, lessonNumber } = body;
-    const created = await Section.create({ id, name, description, lessonNumber });
-    return NextResponse.json({ section: created });
+  try {
+    const auth = await requireAdmin(req);
+    if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.error === "Forbidden" ? 403 : 401 });
+    
+    let body;
+    try {
+      body = await req.json();
+    } catch (parseError) {
+      return NextResponse.json({ error: "Invalid JSON in request body" }, { status: 400 });
+    }
+    
+    const { type } = body;
+    if (!type) {
+      return NextResponse.json({ error: "Missing 'type' field in request body" }, { status: 400 });
+    }
+    
+    await dbConnect();
+    if (type === "section") {
+      try {
+        const { id, name, description, lessonNumber } = body;
+        const created = await Section.create({ id, name, description, lessonNumber });
+        return NextResponse.json({ section: created });
+      } catch (error) {
+        console.error('Error creating section:', error);
+        return NextResponse.json({ error: error.message || "Failed to create section" }, { status: 500 });
+      }
+    }
+    if (type === "lesson") {
+      try {
+        const { sectionId, id, title, title_hindi, description, description_hindi, difficulty, estimatedTime, content, isFree } = body;
+        
+        // Validate required fields
+        if (!sectionId || !id || !title) {
+          return NextResponse.json({ error: "Missing required fields: sectionId, id, and title are required" }, { status: 400 });
+        }
+        
+        // Check if section exists
+        const section = await Section.findOne({ id: sectionId });
+        if (!section) {
+          return NextResponse.json({ error: `Section with ID "${sectionId}" not found` }, { status: 404 });
+        }
+        
+        // Check if lesson ID already exists
+        const existingLesson = await Lesson.findOne({ id });
+        if (existingLesson) {
+          return NextResponse.json({ error: `Lesson with ID "${id}" already exists` }, { status: 400 });
+        }
+        
+        // Ensure difficulty is valid
+        const validDifficulties = ["beginner", "intermediate", "advanced", "easy", "medium", "hard"];
+        const validDifficulty = validDifficulties.includes(difficulty) ? difficulty : "beginner";
+        
+        // Ensure content is an object with the right structure
+        const contentData = typeof content === 'object' && content !== null 
+          ? {
+              english: content.english || "",
+              hindi_ramington: content.hindi_ramington || "",
+              hindi_inscript: content.hindi_inscript || ""
+            }
+          : { english: "", hindi_ramington: "", hindi_inscript: "" };
+        
+        const lessonData = {
+          sectionId: String(sectionId),
+          id: String(id),
+          title: String(title),
+          title_hindi: String(title_hindi || ""),
+          description: String(description || ""),
+          description_hindi: String(description_hindi || ""),
+          difficulty: String(validDifficulty),
+          estimatedTime: String(estimatedTime || "5 minutes"),
+          content: contentData,
+          isFree: Boolean(isFree)
+        };
+        
+        console.log('[Admin API] Creating lesson with data:', JSON.stringify(lessonData, null, 2));
+        const created = await Lesson.create(lessonData);
+        console.log('[Admin API] Lesson created successfully:', created._id);
+        return NextResponse.json({ lesson: created });
+      } catch (error) {
+        console.error('Error creating lesson:', error);
+        // Handle MongoDB duplicate key error
+        if (error.code === 11000) {
+          return NextResponse.json({ error: `Lesson with ID "${body.id}" already exists` }, { status: 400 });
+        }
+        // Handle Mongoose validation errors
+        if (error.name === 'ValidationError') {
+          const errors = Object.values(error.errors).map(e => e.message).join(', ');
+          return NextResponse.json({ error: `Validation error: ${errors}` }, { status: 400 });
+        }
+        return NextResponse.json({ error: error.message || "Failed to create lesson" }, { status: 500 });
+      }
+    }
+    return NextResponse.json({ error: "Invalid type" }, { status: 400 });
+  } catch (error) {
+    console.error('POST /api/admin/learning error:', error);
+    return NextResponse.json({ error: error.message || "Internal server error" }, { status: 500 });
   }
-  if (type === "lesson") {
-    const { sectionId, id, title, description, difficulty, estimatedTime, content } = body;
-    const created = await Lesson.create({ sectionId, id, title, description, difficulty, estimatedTime, content });
-    return NextResponse.json({ lesson: created });
-  }
-  return NextResponse.json({ error: "Invalid type" }, { status: 400 });
 }
 
 export async function PUT(req) {
-  const auth = await requireAdmin(req);
-  if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.error === "Forbidden" ? 403 : 401 });
-  await dbConnect();
-  const body = await req.json();
-  const { type } = body;
-  if (type === "section") {
-    const { id, ...rest } = body;
-    const updated = await Section.findOneAndUpdate({ id }, rest, { new: true });
-    return NextResponse.json({ section: updated });
+  try {
+    const auth = await requireAdmin(req);
+    if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.error === "Forbidden" ? 403 : 401 });
+    
+    let body;
+    try {
+      body = await req.json();
+    } catch (parseError) {
+      return NextResponse.json({ error: "Invalid JSON in request body" }, { status: 400 });
+    }
+    
+    const { type, _id } = body;
+    if (!type) {
+      return NextResponse.json({ error: "Missing 'type' field in request body" }, { status: 400 });
+    }
+    
+    await dbConnect();
+    if (type === "section") {
+      try {
+        const { id, name, description, lessonNumber } = body;
+        const updateData = { name, description, lessonNumber };
+        if (id) updateData.id = id;
+        const query = _id ? { _id } : { id: body.id };
+        const updated = await Section.findOneAndUpdate(query, updateData, { new: true });
+        if (!updated) return NextResponse.json({ error: "Section not found" }, { status: 404 });
+        return NextResponse.json({ section: updated });
+      } catch (error) {
+        console.error('Error updating section:', error);
+        return NextResponse.json({ error: error.message || "Failed to update section" }, { status: 500 });
+      }
+    }
+    if (type === "lesson") {
+      try {
+        const { sectionId, id, title, title_hindi, description, description_hindi, difficulty, estimatedTime, content, isFree } = body;
+        // Ensure difficulty is valid
+        const validDifficulties = ["beginner", "intermediate", "advanced", "easy", "medium", "hard"];
+        const validDifficulty = validDifficulties.includes(difficulty) ? difficulty : "beginner";
+        
+        // Ensure content is an object with the right structure
+        const contentData = typeof content === 'object' && content !== null 
+          ? {
+              english: content.english || "",
+              hindi_ramington: content.hindi_ramington || "",
+              hindi_inscript: content.hindi_inscript || ""
+            }
+          : { english: "", hindi_ramington: "", hindi_inscript: "" };
+        
+        const updateData = {
+          title: String(title),
+          title_hindi: String(title_hindi || ""),
+          description: String(description || ""),
+          description_hindi: String(description_hindi || ""),
+          difficulty: String(validDifficulty),
+          estimatedTime: String(estimatedTime || "5 minutes"),
+          content: contentData,
+          isFree: Boolean(isFree)
+        };
+        if (sectionId) updateData.sectionId = sectionId;
+        if (id) updateData.id = id;
+        const query = _id ? { _id } : { id: body.id };
+        const updated = await Lesson.findOneAndUpdate(query, updateData, { new: true });
+        if (!updated) return NextResponse.json({ error: "Lesson not found" }, { status: 404 });
+        return NextResponse.json({ lesson: updated });
+      } catch (error) {
+        console.error('Error updating lesson:', error);
+        return NextResponse.json({ error: error.message || "Failed to update lesson" }, { status: 500 });
+      }
+    }
+    return NextResponse.json({ error: "Invalid type" }, { status: 400 });
+  } catch (error) {
+    console.error('PUT /api/admin/learning error:', error);
+    return NextResponse.json({ error: error.message || "Internal server error" }, { status: 500 });
   }
-  if (type === "lesson") {
-    const { id, ...rest } = body;
-    const updated = await Lesson.findOneAndUpdate({ id }, rest, { new: true });
-    return NextResponse.json({ lesson: updated });
-  }
-  return NextResponse.json({ error: "Invalid type" }, { status: 400 });
 }
 
 export async function DELETE(req) {

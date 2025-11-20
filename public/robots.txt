@@ -5,9 +5,33 @@ Disallow: /admin
 Disallow: /api/
 Disallow: /exam_mode
 Disallow: /payment
+Disallow: /payment-success
+Disallow: /payment-failed
+Disallow: /dashboard
+Disallow: /profile
+Disallow: /login
+Disallow: /signup
+Disallow: /forget
+Disallow: /debug
+
+# Googlebot
+User-agent: Googlebot
+Allow: /
+Disallow: /admin
+Disallow: /api/
+Disallow: /exam_mode
+Disallow: /payment
+Disallow: /payment-success
+Disallow: /payment-failed
+Disallow: /dashboard
+Disallow: /profile
+Disallow: /login
+Disallow: /signup
+Disallow: /forget
+Disallow: /debug
 
 # Host
-Host: https://example.com
+Host: https://www.mpcpct.com
 
 # Sitemaps
-Sitemap: https://example.com/sitemap.xml
+Sitemap: https://www.mpcpct.com/sitemap.xml

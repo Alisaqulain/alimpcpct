@@ -9,7 +9,10 @@
     "lint": "next lint",
     "export": "next build && next export",
     "analyze": "ANALYZE=true npm run build",
-    "postbuild": "next-sitemap"
+    "postbuild": "next-sitemap",
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "test:coverage": "jest --coverage"
   },
   "dependencies": {
     "bcrypt": "^6.0.0",
@@ -17,6 +20,7 @@
     "cloudinary": "^2.7.0",
     "geist": "^1.4.2",
     "jose": "^6.0.13",
+    "jspdf": "^3.0.3",
     "lucide-react": "^0.513.0",
     "mongodb": "^6.17.0",
     "mongoose": "^8.15.1",
@@ -33,9 +37,13 @@
   "devDependencies": {
     "@eslint/eslintrc": "^3",
     "@tailwindcss/postcss": "^4",
+    "@testing-library/jest-dom": "^6.6.3",
+    "@testing-library/react": "^16.0.1",
     "@types/uuid": "^10.0.0",
     "eslint": "^9",
     "eslint-config-next": "15.3.3",
+    "jest": "^29.7.0",
+    "jest-environment-jsdom": "^29.7.0",
     "tailwindcss": "^4"
   }
 }

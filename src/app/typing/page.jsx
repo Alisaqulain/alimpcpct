@@ -1,23 +1,221 @@
 "use client";
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, Suspense } from "react";
+import { useSearchParams } from "next/navigation";
+import { getLearningData, getLessonContent } from "@/lib/learningData";
 
-export default function TypingTutor() {
-  const content = [
-"a Wolf decided to disguise the way he looked. He thought it would help him get food more",
-"a Wolf decided to disguise the way he looked. He thought it would help him get food more",
-"a Wolf decided to disguise the way he looked. He thought it would help him get food more",
-"a Wolf decided to disguise the way he looked. He thought it would help him get food more",
-    "a Wolf decided to disguise the way he looked. He thought it would help him get food more",
-  ];
-  const words = content.join(" ").trim().split(/\s+/);
+function TypingTutorForm() {
+  const searchParams = useSearchParams();
+  const exerciseId = searchParams.get("exercise");
+  const language = searchParams.get("language") || "english";
+  const subLanguage = searchParams.get("subLanguage") || "";
+  const duration = parseInt(searchParams.get("duration")) || 5;
+  const backspace = searchParams.get("backspace") || "OFF";
+
+  const [content, setContent] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [learningData, setLearningData] = useState(null);
+
+  // Fetch exercise content from API
+  useEffect(() => {
+    const fetchData = async () => {
+      if (!exerciseId) {
+        setLoading(false);
+        return;
+      }
+
+      try {
+        // Fetch skill test data
+        const res = await fetch('/api/skill-test?' + new Date().getTime());
+        if (res.ok) {
+          const data = await res.json();
+          setLearningData(data);
+          const exercise = data.exercises?.find(e => e.id === exerciseId);
+          
+          if (exercise) {
+            let exerciseContent = "";
+            
+            // If exercise is linked to a lesson, use lesson content
+            if (exercise.lessonId) {
+              // Fetch learning data for lesson content
+              try {
+                const learningRes = await fetch('/api/learning?' + new Date().getTime());
+                if (learningRes.ok) {
+                  const learningData = await learningRes.json();
+                  // Find the lesson
+                  for (const section of learningData.sections || []) {
+                    const lesson = section.lessons?.find(l => l.id === exercise.lessonId);
+                    if (lesson) {
+                      const languageKey = language.toLowerCase();
+                      const subLangKey = subLanguage.toLowerCase().includes("ramington")
+                        ? "ramington"
+                        : subLanguage.toLowerCase().includes("inscript")
+                        ? "inscript"
+                        : "";
+                      exerciseContent = getLessonContent(lesson, languageKey, subLangKey) || "";
+                      break;
+                    }
+                  }
+                } else {
+                  // Fallback to local data
+                  const localData = getLearningData();
+                  setLearningData(localData);
+                  for (const section of localData.sections || []) {
+                    const lesson = section.lessons?.find(l => l.id === exercise.lessonId);
+                    if (lesson) {
+                      const languageKey = language.toLowerCase();
+                      const subLangKey = subLanguage.toLowerCase().includes("ramington")
+                        ? "ramington"
+                        : subLanguage.toLowerCase().includes("inscript")
+                        ? "inscript"
+                        : "";
+                      exerciseContent = getLessonContent(lesson, languageKey, subLangKey) || "";
+                      break;
+                    }
+                  }
+                }
+              } catch (error) {
+                console.error('Failed to fetch learning data:', error);
+                // Fallback to local data
+                const localData = getLearningData();
+                setLearningData(localData);
+              }
+            } else {
+              // Use exercise's custom content
+              const exerciseContentObj = exercise.content || {};
+              if (language.toLowerCase() === "hindi") {
+                if (subLanguage.toLowerCase().includes("ramington")) {
+                  exerciseContent = exerciseContentObj.hindi_ramington || "";
+                } else if (subLanguage.toLowerCase().includes("inscript")) {
+                  exerciseContent = exerciseContentObj.hindi_inscript || "";
+                } else {
+                  exerciseContent = exerciseContentObj.hindi_ramington || "";
+                }
+              } else {
+                exerciseContent = exerciseContentObj.english || "";
+              }
+            }
+
+            // Split content into lines (max ~80 characters per line for better display)
+            if (exerciseContent && exerciseContent.trim()) {
+              const words = exerciseContent.trim().split(/\s+/).filter(w => w.length > 0);
+              if (words.length > 0) {
+                const lines = [];
+                let currentLine = "";
+                for (const word of words) {
+                  if ((currentLine + " " + word).length > 80 && currentLine) {
+                    lines.push(currentLine.trim());
+                    currentLine = word;
+                  } else {
+                    currentLine = currentLine ? currentLine + " " + word : word;
+                  }
+                }
+                if (currentLine) {
+                  lines.push(currentLine.trim());
+                }
+                setContent(lines.length > 0 ? lines : []);
+              } else {
+                setContent([]);
+              }
+            } else {
+              setContent([]);
+            }
+          }
+        }
+      } catch (error) {
+        console.error('Failed to fetch exercise data:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchData();
+  }, [exerciseId, language, subLanguage]);
+
+  // Load user name from API and localStorage
+  useEffect(() => {
+    const fetchUserName = async () => {
+      try {
+        // First try to get from API
+        const res = await fetch('/api/profile', { credentials: 'include' });
+        if (res.ok) {
+          const data = await res.json();
+          if (data.user?.name) {
+            setUserName(data.user.name);
+          }
+          if (data.user?.profileUrl) {
+            setUserProfileUrl(data.user.profileUrl);
+          }
+          if (data.user?.name || data.user?.profileUrl) {
+            return;
+          }
+        }
+      } catch (error) {
+        console.error('Failed to fetch user profile:', error);
+      }
+      
+      // Fallback to localStorage
+      const userDataStr = localStorage.getItem('examUserData');
+      if (userDataStr) {
+        try {
+          const userData = JSON.parse(userDataStr);
+          if (userData.name) {
+            setUserName(userData.name);
+          }
+        } catch (error) {
+          console.error('Error parsing user data:', error);
+        }
+      }
+    };
+    
+    fetchUserName();
+  }, []);
+
+  // Fetch backspace settings
+  useEffect(() => {
+    const fetchBackspaceSettings = async () => {
+      try {
+        const res = await fetch('/api/backspace-settings');
+        if (res.ok) {
+          const data = await res.json();
+          setBackspaceSettings(data.settings || []);
+          
+          // Find setting for current duration
+          const setting = data.settings?.find(s => s.duration === duration);
+          if (setting) {
+            setBackspaceLimit(setting.backspaceLimit);
+          } else {
+            setBackspaceLimit(null); // No limit if no setting found
+          }
+        }
+      } catch (error) {
+        console.error('Failed to fetch backspace settings:', error);
+        setBackspaceLimit(null);
+      }
+    };
+    
+    fetchBackspaceSettings();
+  }, [duration]);
+
+  const words = content.length > 0 && content.join(" ").trim() 
+    ? content.join(" ").trim().split(/\s+/).filter(w => w.length > 0)
+    : [];
 
   const [typedText, setTypedText] = useState("");
   const [startTime, setStartTime] = useState(null);
+  const [endTime, setEndTime] = useState(null);
   const [wpm, setWPM] = useState(0);
   const [backspaceCount, setBackspaceCount] = useState(0);
   const [isPaused, setIsPaused] = useState(false);
+  const [isCompleted, setIsCompleted] = useState(false);
   const [fontSize, setFontSize] = useState(16);
   const [elapsedTime, setElapsedTime] = useState(0);
+  const [timeRemaining, setTimeRemaining] = useState(duration * 60); // Convert to seconds
+  const [resultId, setResultId] = useState(null);
+  const [accuracy, setAccuracy] = useState(100);
+  const [userName, setUserName] = useState("User");
+  const [userProfileUrl, setUserProfileUrl] = useState("/lo.jpg");
+  const [backspaceLimit, setBackspaceLimit] = useState(null); // null = unlimited
+  const [backspaceSettings, setBackspaceSettings] = useState([]);
 
   const intervalRef = useRef(null);
   const wordRefs = useRef([]);
@@ -27,26 +225,170 @@ export default function TypingTutor() {
   const correctWords = typedWords.filter((word, i) => word === words[i]);
   const wrongWords = typedWords.filter((word, i) => word !== words[i] && word);
 
-  useEffect(() => {
-    if (!isPaused && startTime) {
-      intervalRef.current = setInterval(() => {
-        setElapsedTime((prev) => prev + 1);
-      }, 1000);
+  const saveTypingResult = React.useCallback(async (endTime, startTime, grossWpm, accuracy) => {
+    try {
+      const timeTaken = Math.round((endTime - startTime) / 1000);
+      const timeInMinutes = timeTaken / 60;
+      const wordsTyped = typedWords.length;
+      const correct = correctWords.length;
+      const wrong = wrongWords.length;
+      const netSpeed = Math.round((correct / timeInMinutes) || 0);
+      
+      // Calculate errors in format "THGe [The]"
+      const errorStrings = [];
+      for (let i = 0; i < Math.min(typedWords.length, words.length); i++) {
+        if (typedWords[i] !== words[i]) {
+          errorStrings.push(`${typedWords[i]} [${words[i]}]`);
+        }
+      }
+      
+      // Determine final result (PASS if net speed >= 30 WPM)
+      const finalResult = netSpeed >= 30 ? "PASS" : "FAIL";
+      
+      // Determine remarks
+      let remarks = "Fair";
+      if (netSpeed >= 50) remarks = "Excellent";
+      else if (netSpeed >= 40) remarks = "Very Good";
+      else if (netSpeed >= 30) remarks = "Good";
+      else if (netSpeed >= 20) remarks = "Fair";
+      else remarks = "Poor";
+      
+      // Get user data - use actual userName from state (fetched from API)
+      const userDataStr = localStorage.getItem('examUserData');
+      const userData = userDataStr ? JSON.parse(userDataStr) : {};
+      
+      // Get exercise info
+      const exerciseName = learningData?.exercises?.find(e => e.id === exerciseId)?.name || "Typing Exercise";
+      
+      // Use actual userName from state (which should be fetched from API), fallback to localStorage, then "User"
+      const finalUserName = userName && userName !== "User" ? userName : (userData.name || "User");
+      
+      const resultData = {
+        userId: userData.mobile || 'anonymous',
+        userName: finalUserName,
+        userMobile: userData.mobile,
+        userCity: userData.city,
+        exerciseId: exerciseId || "",
+        exerciseName: exerciseName,
+        language: language === "hindi" ? "Hindi" : "English",
+        subLanguage: subLanguage || "",
+        duration: duration,
+        backspaceEnabled: backspace === "ON",
+        grossSpeed: grossWpm,
+        netSpeed: netSpeed,
+        totalWords: wordsTyped,
+        correctWords: correct,
+        wrongWords: wrong,
+        accuracy: accuracy,
+        timeTaken: timeTaken,
+        backspaceCount: backspaceCount,
+        errors: errorStrings,
+        finalResult: finalResult,
+        remarks: remarks
+      };
+      
+      const res = await fetch('/api/typing-results', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(resultData)
+      });
+      
+      if (res.ok) {
+        const data = await res.json();
+        setResultId(data.result._id);
+        localStorage.setItem('lastTypingResultId', data.result._id);
+      } else {
+        console.error('Failed to save typing result');
+      }
+    } catch (error) {
+      console.error('Error saving typing result:', error);
     }
-    return () => clearInterval(intervalRef.current);
-  }, [isPaused, startTime]);
+  }, [typedWords, correctWords, wrongWords, words, learningData, exerciseId, language, subLanguage, duration, backspace, backspaceCount]);
+
+  const handleCompletion = React.useCallback(() => {
+    if (isCompleted) return;
+    
+    setIsCompleted(true);
+    setIsPaused(true);
+    const endTimeNow = Date.now();
+    setEndTime(endTimeNow);
+    
+    // Calculate final stats
+    const timeInMinutes = elapsedTime / 60 || 1;
+    const finalWPM = Math.floor((correctWords.length / timeInMinutes));
+    const totalTyped = typedWords.length;
+    const correct = correctWords.length;
+    const finalAccuracy = totalTyped > 0 ? Math.round((correct / totalTyped) * 100) : 100;
+    
+    setWPM(finalWPM);
+    setAccuracy(finalAccuracy);
+    
+    // Save result
+    saveTypingResult(endTimeNow, startTime, finalWPM, finalAccuracy);
+  }, [isCompleted, elapsedTime, correctWords.length, typedWords.length, startTime, saveTypingResult]);
+
+  // Timer effect - count up elapsed time and count down remaining time
+  useEffect(() => {
+    if (isPaused || !startTime || isCompleted) return;
+    
+    intervalRef.current = setInterval(() => {
+      setElapsedTime((prev) => {
+        const newTime = prev + 1;
+        setTimeRemaining((prevRemaining) => {
+          const newRemaining = (duration * 60) - newTime;
+          // Don't auto-complete when time runs out, just stop at 0
+          return newRemaining <= 0 ? 0 : newRemaining;
+        });
+        return newTime;
+      });
+    }, 1000);
+    
+    return () => {
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+      }
+    };
+  }, [isPaused, startTime, isCompleted, duration]);
 
   useEffect(() => {
-    if (elapsedTime === 0 || isPaused) return;
-    setWPM(Math.floor((correctWords.length / elapsedTime) * 60));
-  }, [elapsedTime, correctWords.length, isPaused]);
+    if (elapsedTime === 0 || isPaused || isCompleted) return;
+    const timeInMinutes = elapsedTime / 60;
+    if (timeInMinutes > 0) {
+      setWPM(Math.floor((correctWords.length / timeInMinutes)));
+      // Calculate accuracy
+      const totalTyped = typedWords.length;
+      const correct = correctWords.length;
+      const accuracyCalc = totalTyped > 0 ? Math.round((correct / totalTyped) * 100) : 100;
+      setAccuracy(accuracyCalc);
+    }
+  }, [elapsedTime, correctWords.length, isPaused, isCompleted, typedWords.length]);
+
+  // Removed automatic completion - user must click Submit button
 
   const handleChange = (e) => {
-    if (isPaused) return;
+    if (isPaused || isCompleted) return;
+    
     const newValue = e.target.value;
+    
+    // Handle backspace
     if (typedText.length > newValue.length) {
+      if (backspace === "OFF") {
+        // Prevent backspace if disabled
+        e.target.value = typedText;
+        return;
+      }
+      
+      // Check backspace limit if enabled
+      if (backspaceLimit !== null && backspaceCount >= backspaceLimit) {
+        // Backspace limit reached
+        e.target.value = typedText;
+        alert(`Backspace limit reached! Maximum ${backspaceLimit} backspaces allowed for ${duration} minute test.`);
+        return;
+      }
+      
       setBackspaceCount((prev) => prev + 1);
     }
+    
     if (!startTime) {
       setStartTime(Date.now());
     }
@@ -59,14 +401,22 @@ export default function TypingTutor() {
     }
   };
 
+
   const handleReset = () => {
-    clearInterval(intervalRef.current);
+    if (intervalRef.current) {
+      clearInterval(intervalRef.current);
+    }
     setTypedText("");
     setStartTime(null);
+    setEndTime(null);
     setWPM(0);
     setBackspaceCount(0);
     setElapsedTime(0);
+    setTimeRemaining(duration * 60);
     setIsPaused(false);
+    setIsCompleted(false);
+    setResultId(null);
+    setAccuracy(100);
   };
 
   const togglePause = () => {
@@ -118,6 +468,18 @@ export default function TypingTutor() {
   const increaseFont = () => setFontSize((prev) => Math.min(prev + 2, 30));
   const decreaseFont = () => setFontSize((prev) => Math.max(prev - 2, 10));
 
+  const handleDownloadPDF = () => {
+    if (!resultId) {
+      // If no resultId, redirect to result page
+      const storedId = localStorage.getItem('lastTypingResultId');
+      if (storedId) {
+        window.location.href = `/result/skill-test?resultId=${storedId}`;
+      }
+      return;
+    }
+    window.location.href = `/result/skill-test?resultId=${resultId}`;
+  };
+
   return (
     <div className="min-h-screen bg-[#290c52] bg-[url('/bg.jpg')] mt-30 md:mt-0  bg-cover bg-center bg-no-repeat px-4 py-6 md:px-14 md:py-12 md:mx-8 md:my-8 rounded-[0px] md:rounded-[100px]">
       <div className="max-w-7xl mx-auto mt-30 md:mt-15">
@@ -137,17 +499,69 @@ export default function TypingTutor() {
 </p>
 
             <div className="bg-white p-4 mr-10 md:p-6 rounded-xl shadow-lg ml-5 mt-[-25]">
-              <div className="text-sm leading-relaxed mb-4 overflow-auto min-h-[200px] max-h-[250px] mt-4 break-words font-sans">
-                {renderColoredWords()}
-              </div>
-              <textarea
-                value={typedText}
-                onChange={handleChange}
-                disabled={isPaused}
-                className="w-full min-h-[120px] max-h-[200px] md:min-h-[180px] md:max-h-[220px] p-2 border-t border-gray-400 rounded-md focus:outline-none mt-4 disabled:opacity-50"
-                placeholder="Start typing here..."
-                style={{ fontSize: `${fontSize}px` }}
-              />
+              {/* Results Display */}
+              {isCompleted && (
+                <div className="mb-6 bg-green-50 p-4 rounded-lg border-2 border-green-500">
+                  <h2 className="text-xl font-bold text-green-800 mb-3">Test Completed!</h2>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3">
+                    <div className="text-center">
+                      <div className="text-2xl font-bold text-green-600">{wpm}</div>
+                      <div className="text-sm text-green-700">WPM</div>
+                    </div>
+                    <div className="text-center">
+                      <div className="text-2xl font-bold text-green-600">{accuracy}%</div>
+                      <div className="text-sm text-green-700">Accuracy</div>
+                    </div>
+                    <div className="text-center">
+                      <div className="text-2xl font-bold text-green-600">{formatClock(elapsedTime)}</div>
+                      <div className="text-sm text-green-700">Time</div>
+                    </div>
+                    <div className="text-center">
+                      <div className="text-2xl font-bold text-green-600">{correctWords.length}</div>
+                      <div className="text-sm text-green-700">Correct</div>
+                    </div>
+                  </div>
+                  <div className="flex gap-3 justify-center">
+                    <button
+                      onClick={handleDownloadPDF}
+                      className="bg-blue-500 hover:bg-blue-600 text-white px-6 py-2 rounded-lg font-semibold"
+                    >
+                      Download PDF
+                    </button>
+                    <button
+                      onClick={handleReset}
+                      className="bg-green-500 hover:bg-green-600 text-white px-6 py-2 rounded-lg font-semibold"
+                    >
+                      Try Again
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {loading ? (
+                <div className="text-center py-8">
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900 mx-auto mb-4"></div>
+                  <p>Loading exercise content...</p>
+                </div>
+              ) : content.length === 0 ? (
+                <div className="text-center py-8 text-gray-500">
+                  <p>No content available for this exercise.</p>
+                </div>
+              ) : (
+                <>
+                  <div className="text-sm leading-relaxed mb-4 overflow-auto min-h-[200px] max-h-[250px] mt-4 break-words font-sans">
+                    {renderColoredWords()}
+                  </div>
+                  <textarea
+                    value={typedText}
+                    onChange={handleChange}
+                    disabled={isPaused || isCompleted}
+                    className="w-full min-h-[120px] max-h-[200px] md:min-h-[180px] md:max-h-[220px] p-2 border-t border-gray-400 rounded-md focus:outline-none mt-4 disabled:opacity-50"
+                    placeholder="Start typing here..."
+                    style={{ fontSize: `${fontSize}px` }}
+                  />
+                </>
+              )}
             </div>
             <div className="flex justify-center mt-5 gap-6 flex-wrap">
               <button
@@ -158,9 +572,17 @@ export default function TypingTutor() {
               </button>
               <button
                 onClick={togglePause}
-                className="bg-blue-600 cursor-pointer text-lg hover:bg-blue-700 text-white px-8 py-1 rounded shadow"
+                disabled={isCompleted}
+                className="bg-blue-600 cursor-pointer text-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-white px-8 py-1 rounded shadow"
               >
                 {isPaused ? "Resume" : "Pause"}
+              </button>
+              <button
+                onClick={handleCompletion}
+                disabled={!startTime || isCompleted}
+                className="bg-green-600 cursor-pointer text-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed text-white px-8 py-1 rounded shadow font-semibold"
+              >
+                Submit
               </button>
             </div>
           </div>
@@ -173,14 +595,24 @@ export default function TypingTutor() {
 
             <div className="flex flex-col items-center space-y-1">
               <img
-                src="/lo.jpg"
-                alt="User"
+                src={userProfileUrl}
+                alt={userName}
                 className="w-20 h-20 md:w-30 md:h-25 rounded-md border-2 border-white"
+                onError={(e) => {
+                  e.target.src = "/lo.jpg";
+                }}
               />
-              <p className="font-semibold text-xs">Anas Ansari</p>
+              <p className="font-semibold text-xs">{userName}</p>
+              {backspaceLimit !== null && (
+                <p className="text-xs text-yellow-300 mt-1">
+                  Backspace: {backspaceCount}/{backspaceLimit}
+                </p>
+              )}
               <div className="w-24 h-9 rounded-lg overflow-hidden mx-auto text-center mt-2 shadow-[0_1px_8px_white,0_2px_6px_silver,0_4px_10px_rgba(0,0,0,0.7)]">
                 <div className="bg-black text-white text-[10px] font-semibold py-[1px]">Time</div>
-                <div className="bg-white text-black text-sm font-bold">{formatClock(elapsedTime)}</div>
+                <div className="bg-white text-black text-sm font-bold">
+                  {isCompleted ? formatClock(elapsedTime) : formatClock(timeRemaining)}
+                </div>
               </div>
               <div className="grid grid-cols-2 gap-y-3 mt-2 gap-x-4 md:gap-x-15 mr-0 md:mr-10 w-[70%] md:w-full text-center">
                 {[{ label: "Correct", value: correctWords.length, color: "text-green-600" },
@@ -193,6 +625,14 @@ export default function TypingTutor() {
                     </div>
                   ))}
               </div>
+              {isCompleted && (
+                <div className="mt-3 text-center">
+                  <div className="bg-white text-black px-4 py-2 rounded-lg shadow-md">
+                    <div className="text-xs font-semibold mb-1">Accuracy</div>
+                    <div className="text-lg font-bold text-green-600">{accuracy}%</div>
+                  </div>
+                </div>
+              )}
 
               {/* Speedometer */}
               <div className="hidden lg:block">
@@ -250,5 +690,20 @@ export default function TypingTutor() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function TypingTutor() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen bg-[#290c52] bg-[url('/bg.jpg')] mt-30 md:mt-0 bg-cover bg-center bg-no-repeat px-4 py-6 md:px-14 md:py-12 md:mx-8 md:my-8 rounded-[0px] md:rounded-[100px] flex items-center justify-center">
+        <div className="text-center text-white">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-white mx-auto mb-4"></div>
+          <p>Loading...</p>
+        </div>
+      </div>
+    }>
+      <TypingTutorForm />
+    </Suspense>
   );
 }

@@ -1,21 +1,102 @@
 import { NextResponse } from "next/server";
 import fs from "fs/promises";
 import path from "path";
+import dbConnect from "@/lib/db";
+import Section from "@/lib/models/Section";
+import Lesson from "@/lib/models/Lesson";
 
 const DATA_FILE_PATH = path.join(process.cwd(), "src", "data", "learningData.json");
 
-// GET - Retrieve learning data
+// GET - Retrieve learning data from database
 export async function GET() {
   try {
-    const data = await fs.readFile(DATA_FILE_PATH, "utf8");
-    const learningData = JSON.parse(data);
+    await dbConnect();
+    
+    // Fetch sections and lessons from database
+    const sections = await Section.find({}).sort({ lessonNumber: 1 }).lean();
+    const lessons = await Lesson.find({}).lean();
+    
+    console.log(`[Learning API] Fetched ${sections.length} sections and ${lessons.length} lessons from database`);
+    
+    // Read languages and settings from JSON (these are static config)
+    let languages, settings, metadata;
+    try {
+      const staticData = await fs.readFile(DATA_FILE_PATH, "utf8");
+      const parsed = JSON.parse(staticData);
+      languages = parsed.languages;
+      settings = parsed.settings;
+      metadata = parsed.metadata;
+    } catch (staticError) {
+      console.error("Error reading static config:", staticError);
+      // Default values if JSON file fails
+      languages = { main: [{ id: "english", name: "English", subLanguages: [] }] };
+      settings = { durations: [3, 5, 10], backspaceOptions: ["OFF", "ON"] };
+      metadata = { version: "1.0", totalLessons: 0, estimatedTotalTime: "0 minutes" };
+    }
+    
+    // Format sections with nested lessons
+    const formattedSections = sections.map(section => ({
+      id: section.id,
+      name: section.name,
+      lessonNumber: section.lessonNumber,
+      description: section.description || "",
+      lessons: lessons
+        .filter(lesson => lesson.sectionId === section.id)
+        .map(lesson => ({
+          id: lesson.id,
+          title: lesson.title,
+          title_hindi: lesson.title_hindi || "",
+          description: lesson.description || "",
+          description_hindi: lesson.description_hindi || "",
+          difficulty: lesson.difficulty,
+          estimatedTime: lesson.estimatedTime,
+          content: lesson.content || { english: "", hindi_ramington: "", hindi_inscript: "" },
+          isFree: lesson.isFree === true || lesson.isFree === 'true'
+        }))
+    }));
+    
+    // Calculate metadata
+    const totalLessons = lessons.length;
+    const difficultyBreakdown = {};
+    lessons.forEach(lesson => {
+      difficultyBreakdown[lesson.difficulty] = (difficultyBreakdown[lesson.difficulty] || 0) + 1;
+    });
+    
+    const learningData = {
+      languages,
+      settings,
+      sections: formattedSections,
+      metadata: {
+        ...metadata,
+        totalLessons,
+        lastUpdated: new Date().toISOString().split('T')[0]
+      }
+    };
+    
     return NextResponse.json(learningData);
   } catch (error) {
-    console.error("Error reading learning data:", error);
-    return NextResponse.json(
-      { error: "Failed to load learning data" },
-      { status: 500 }
-    );
+    console.error("Error reading learning data from database:", error);
+    // Only fallback to JSON if database connection fails, not if it's just empty
+    if (error.message?.includes('connect') || error.message?.includes('Mongo')) {
+      console.log("Database connection failed, falling back to JSON file");
+      try {
+        const data = await fs.readFile(DATA_FILE_PATH, "utf8");
+        const learningData = JSON.parse(data);
+        return NextResponse.json(learningData);
+      } catch (fallbackError) {
+        return NextResponse.json(
+          { error: "Failed to load learning data", details: error.message },
+          { status: 500 }
+        );
+      }
+    }
+    // If database is connected but query fails, return empty structure
+    return NextResponse.json({
+      languages: { main: [{ id: "english", name: "English", subLanguages: [] }] },
+      settings: { durations: [3, 5, 10], backspaceOptions: ["OFF", "ON"] },
+      sections: [],
+      metadata: { version: "1.0", totalLessons: 0, estimatedTotalTime: "0 minutes", lastUpdated: new Date().toISOString().split('T')[0] }
+    });
   }
 }
 

@@ -1,13 +1,20 @@
 import { NextResponse } from "next/server";
 import dbConnect from "@/lib/db";
 import Exam from "@/lib/models/Exam";
+import { jwtVerify } from "jose";
 
-function isAdmin(request) {
+const JWT_SECRET = process.env.JWT_SECRET || "secret123";
+
+async function requireAdmin(req) {
+  const token = req.cookies.get("token")?.value;
+  if (!token) return { ok: false, error: "Unauthorized" };
   try {
-    const cookie = request.headers.get('cookie') || '';
-    const role = cookie.includes('role=admin') ? 'admin' : null; // placeholder; integrate real JWT parsing if needed
-    return role === 'admin';
-  } catch { return false; }
+    const { payload } = await jwtVerify(token, new TextEncoder().encode(JWT_SECRET));
+    if (payload.role !== "admin") return { ok: false, error: "Forbidden" };
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: "Unauthorized" };
+  }
 }
 
 export async function GET() {
@@ -16,10 +23,11 @@ export async function GET() {
   return NextResponse.json({ exams });
 }
 
-export async function POST(request) {
-  if (!isAdmin(request)) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+export async function POST(req) {
+  const auth = await requireAdmin(req);
+  if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.error === "Forbidden" ? 403 : 401 });
   await dbConnect();
-  const data = await request.json();
+  const data = await req.json();
   const exam = await Exam.create(data);
   return NextResponse.json({ exam });
 }

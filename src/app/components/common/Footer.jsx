@@ -74,6 +74,32 @@ export default function Footer() {
         </div>
       </div>
 
+      {/* Policy Links */}
+      <div className="max-w-7xl mx-auto mt-10 pt-6 border-t border-gray-700">
+        <h3 className="text-white font-semibold mb-4">Legal & Policies</h3>
+        <div className="flex flex-wrap gap-4 text-sm">
+          <a href="/refund" className="text-gray-300 hover:text-white hover:underline">
+            Cancellation & Refunds
+          </a>
+          <span className="text-gray-600">|</span>
+          <a href="/terms" className="text-gray-300 hover:text-white hover:underline">
+            Terms and Conditions
+          </a>
+          <span className="text-gray-600">|</span>
+          <a href="/shipping" className="text-gray-300 hover:text-white hover:underline">
+            Shipping
+          </a>
+          <span className="text-gray-600">|</span>
+          <a href="/privacy" className="text-gray-300 hover:text-white hover:underline">
+            Privacy
+          </a>
+          <span className="text-gray-600">|</span>
+          <a href="/contact-us" className="text-gray-300 hover:text-white hover:underline">
+            Contact Us
+          </a>
+        </div>
+      </div>
+
       {/* Mobile Enquiry */}
       <div className="max-w-7xl mx-auto mt-10">
         <h3 className="text-white font-semibold mb-2">Mobile Enquiry</h3>

@@ -44,22 +44,36 @@ export async function POST(req) {
         process.env.CLOUDINARY_API_SECRET
       );
 
-      const isValidFile = file && typeof file.arrayBuffer === "function" && (file.size === undefined || file.size > 0);
-      if (hasCloudinaryConfig && file && typeof file.arrayBuffer === "function") {
-        console.log("📂 Uploading file:", file.name, file.type, file.size);
+      // Check if file is valid: must exist, have arrayBuffer method, and have size > 0
+      const isValidFile = file && 
+                         typeof file.arrayBuffer === "function" && 
+                         file.size !== undefined && 
+                         file.size > 0 &&
+                         file.type && 
+                         file.type.startsWith('image/');
+
+      if (hasCloudinaryConfig && isValidFile) {
+        console.log("📂 Uploading profile photo:", file.name, file.type, file.size, "bytes");
       
         const buffer = Buffer.from(await file.arrayBuffer());
       
         const uploadResult = await new Promise((resolve, reject) => {
           cloudinary.uploader
             .upload_stream(
-              { resource_type: "auto", folder: "profiles" }, // auto handles image/pdf/video
+              { 
+                resource_type: "image", 
+                folder: "profiles",
+                transformation: [
+                  { width: 400, height: 400, crop: "fill", gravity: "face" },
+                  { quality: "auto", fetch_format: "auto" }
+                ]
+              },
               (err, result) => {
                 if (err) {
                   console.error("❌ Cloudinary error:", err);
                   reject(err);
                 } else {
-                  console.log("✅ Uploaded:", result.secure_url);
+                  console.log("✅ Profile photo uploaded successfully:", result.secure_url);
                   resolve(result);
                 }
               }
@@ -68,10 +82,21 @@ export async function POST(req) {
         });
       
         imageUrl = uploadResult.secure_url;
+        console.log("✅ Profile photo URL saved:", imageUrl);
+      } else if (file && !isValidFile) {
+        console.warn("⚠️ Invalid file provided or Cloudinary not configured. File details:", {
+          hasFile: !!file,
+          hasArrayBuffer: file && typeof file.arrayBuffer === "function",
+          size: file?.size,
+          type: file?.type,
+          hasCloudinaryConfig
+        });
       }
       
     } catch (uploadErr) {
-      console.warn("Profile upload failed, continuing without image:", uploadErr?.message || uploadErr);
+      console.error("❌ Profile upload error:", uploadErr?.message || uploadErr);
+      // Continue without image - profile photo is optional
+      console.warn("⚠️ Continuing signup without profile photo");
     }
 
     const hashedPassword = await bcrypt.hash(password, 10);

@@ -1,17 +1,19 @@
 import { NextResponse } from "next/server";
 import dbConnect from "@/lib/db";
 import Subscription from "@/lib/models/Subscription";
-import { verifyJWT } from "@/lib/auth";
+import { jwtVerify } from "jose";
+
+const JWT_SECRET = process.env.JWT_SECRET || "secret123";
 
 export async function GET(request) {
   try {
-    const token = request.headers.get("authorization")?.replace("Bearer ", "");
+    const token = request.cookies.get("token")?.value;
     if (!token) {
       return NextResponse.json({ error: "No token provided" }, { status: 401 });
     }
 
-    const decoded = await verifyJWT(token);
-    if (!decoded || decoded.role !== "admin") {
+    const { payload } = await jwtVerify(token, new TextEncoder().encode(JWT_SECRET));
+    if (payload?.role !== "admin") {
       return NextResponse.json({ error: "Admin access required" }, { status: 403 });
     }
 

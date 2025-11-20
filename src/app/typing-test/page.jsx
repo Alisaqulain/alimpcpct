@@ -29,19 +29,83 @@ function TypingTestForm() {
   // Backspace policy: <=3m => 10, >3m && <=5m => 20, >5m => 40
   const deriveBackspaceLimit = (m) => (m <= 3 ? 10 : (m <= 5 ? 20 : 40));
   const [backspaceLimit, setBackspaceLimit] = useState(deriveBackspaceLimit(duration));
+  const [resultId, setResultId] = useState(null);
   
   const inputRef = useRef(null);
   const timerRef = useRef(null);
 
   useEffect(() => {
-    if (lessonId) {
-      const lessonData = getLessonById(lessonId);
-      if (lessonData) {
-        setLesson(lessonData);
-        const lessonContent = getLessonContent(lessonData, language, subLanguage);
-        setContent(lessonContent || "Content not available");
+    const fetchLesson = async () => {
+      if (lessonId) {
+        try {
+          // Fetch all learning data from API
+          const res = await fetch('/api/learning?' + new Date().getTime());
+          if (res.ok) {
+            const data = await res.json();
+            // Find the lesson in the data
+            let lessonData = null;
+            for (const section of data.sections || []) {
+              const foundLesson = section.lessons?.find(l => l.id === lessonId);
+              if (foundLesson) {
+                lessonData = {
+                  ...foundLesson,
+                  section: section.name,
+                  sectionId: section.id
+                };
+                break;
+              }
+            }
+            
+            if (lessonData) {
+              setLesson(lessonData);
+              // Get content based on language
+              let contentKey = 'english';
+              if (language === 'hindi') {
+                if (subLanguage === 'ramington') {
+                  contentKey = 'hindi_ramington';
+                } else if (subLanguage === 'inscript') {
+                  contentKey = 'hindi_inscript';
+                } else {
+                  contentKey = 'hindi_ramington'; // default
+                }
+              }
+              
+              const lessonContent = lessonData.content?.[contentKey] || lessonData.content?.english || "Content not available";
+              const scriptIndicator = (language === 'hindi' && subLanguage) 
+                ? (subLanguage === 'ramington' ? '[Ramington Gail] ' : '[Inscript] ')
+                : '';
+              setContent(scriptIndicator + lessonContent);
+            } else {
+              // Fallback to local data if not found in database
+              const localLesson = getLessonById(lessonId);
+              if (localLesson) {
+                setLesson(localLesson);
+                const lessonContent = getLessonContent(localLesson, language, subLanguage);
+                setContent(lessonContent || "Content not available");
+              }
+            }
+          } else {
+            // Fallback to local data if API fails
+            const localLesson = getLessonById(lessonId);
+            if (localLesson) {
+              setLesson(localLesson);
+              const lessonContent = getLessonContent(localLesson, language, subLanguage);
+              setContent(lessonContent || "Content not available");
+            }
+          }
+        } catch (error) {
+          console.error('Failed to fetch lesson:', error);
+          // Fallback to local data
+          const localLesson = getLessonById(lessonId);
+          if (localLesson) {
+            setLesson(localLesson);
+            const lessonContent = getLessonContent(localLesson, language, subLanguage);
+            setContent(lessonContent || "Content not available");
+          }
+        }
       }
-    }
+    };
+    fetchLesson();
   }, [lessonId, language, subLanguage]);
 
   // If duration changes (via query), resync time and backspace policy
@@ -71,6 +135,9 @@ function TypingTestForm() {
             const totalTyped = userInput.length || 1;
             const accuracyCalculated = Math.max(0, Math.min(100, Math.round(((totalTyped - errors.length) / totalTyped) * 100)));
             setAccuracy(accuracyCalculated);
+            
+            // Save result to database
+            saveTypingResult(endTimeStamp, startTime, wpmCalculated, accuracyCalculated, userInput);
             
             return 0;
           }
@@ -149,6 +216,93 @@ function TypingTestForm() {
 
       const accuracyCalculated = Math.round(((content.length - newErrors.length) / content.length) * 100);
       setAccuracy(accuracyCalculated);
+      
+      // Save result to database
+      saveTypingResult(endTimeStamp, startTime, wpmCalculated, accuracyCalculated, value);
+    }
+  };
+
+  const saveTypingResult = async (endTime, startTime, grossWpm, accuracy, typedText) => {
+    try {
+      // Calculate statistics
+      const timeTaken = Math.round((endTime - startTime) / 1000); // in seconds
+      const timeInMinutes = timeTaken / 60;
+      const wordsTyped = typedText.trim().split(/\s+/).filter(w => w).length;
+      const correctWords = Math.round((accuracy / 100) * wordsTyped);
+      const wrongWords = wordsTyped - correctWords;
+      const netSpeed = Math.round((correctWords / timeInMinutes) || 0);
+      
+      // Calculate errors in format "THGe [The]"
+      const errorStrings = [];
+      const words = typedText.trim().split(/\s+/);
+      const correctWordsArray = content.trim().split(/\s+/);
+      for (let i = 0; i < Math.min(words.length, correctWordsArray.length); i++) {
+        if (words[i] !== correctWordsArray[i]) {
+          errorStrings.push(`${words[i]} [${correctWordsArray[i]}]`);
+        }
+      }
+      
+      // Determine final result (PASS if net speed >= 30 WPM)
+      const finalResult = netSpeed >= 30 ? "PASS" : "FAIL";
+      
+      // Determine remarks
+      let remarks = "Fair";
+      if (netSpeed >= 50) remarks = "Excellent";
+      else if (netSpeed >= 40) remarks = "Very Good";
+      else if (netSpeed >= 30) remarks = "Good";
+      else if (netSpeed >= 20) remarks = "Fair";
+      else remarks = "Poor";
+      
+      // Get user data
+      const userDataStr = localStorage.getItem('examUserData');
+      const userData = userDataStr ? JSON.parse(userDataStr) : {};
+      
+      // Get exercise info from URL or localStorage
+      const exerciseId = searchParams.get("exercise") || "";
+      const exerciseName = lesson?.title || "Typing Test";
+      
+      const resultData = {
+        userId: userData.mobile || 'anonymous',
+        userName: userData.name || 'User',
+        userMobile: userData.mobile,
+        userCity: userData.city,
+        exerciseId: exerciseId,
+        exerciseName: exerciseName,
+        language: language === "hindi" ? "Hindi" : "English",
+        subLanguage: subLanguage || "",
+        duration: duration,
+        backspaceEnabled: backspaceEnabled,
+        grossSpeed: grossWpm,
+        netSpeed: netSpeed,
+        totalWords: wordsTyped,
+        correctWords: correctWords,
+        wrongWords: wrongWords,
+        accuracy: accuracy,
+        timeTaken: timeTaken,
+        backspaceCount: backspaceCount,
+        errors: errorStrings,
+        finalResult: finalResult,
+        remarks: remarks
+      };
+      
+      const res = await fetch('/api/typing-results', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(resultData)
+      });
+      
+      if (res.ok) {
+        const data = await res.json();
+        setResultId(data.result._id);
+        // Store result ID for result page
+        localStorage.setItem('lastTypingResultId', data.result._id);
+        // Redirect to result page
+        window.location.href = `/result/skill-test?resultId=${data.result._id}`;
+      } else {
+        console.error('Failed to save typing result');
+      }
+    } catch (error) {
+      console.error('Error saving typing result:', error);
     }
   };
 

@@ -6,388 +6,790 @@ export default function TypingTutor() {
   const [selectedLanguage, setSelectedLanguage] = useState("English");
   const [selectedSubLanguage, setSelectedSubLanguage] = useState("");
   const [duration, setDuration] = useState(5);
-  const [selected, setSelected] = useState("Exercise103");
-  const [selectedExam, setSelectedExam] = useState("Most Exams (MPCPCT)");
+  const [selected, setSelected] = useState("");
+  const [selectedExam, setSelectedExam] = useState("");
   const [backspace, setBackspace] = useState("OFF");
+  const [showUploadForm, setShowUploadForm] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [currentUserId, setCurrentUserId] = useState(null);
+  
+  // Upload form state
+  const [uploadForm, setUploadForm] = useState({
+    name: "",
+    content_english: "",
+    content_hindi_ramington: "",
+    content_hindi_inscript: "",
+    difficulty: "beginner"
+  });
+  const [useFileUpload, setUseFileUpload] = useState(false);
+  const [uploadFile, setUploadFile] = useState(null);
 
-  const [exercises, setExercises] = useState([
-    "CommonWord 4 Spee",
-    "CommonWord 5 Spee",
-    "CommonWord 6 Spee",
-    "CommonWord 7 Spee",
-    "CommonWord 8 Spee",
-    "Exercise100",
-    "Exercise101",
-    "Exercise102",
-    "Exercise103",
-    "Exercise104",
-    "Exercise105",
-    "Exercise106",
-    "Exercise107",
-  ]);
-  const [showModal, setShowModal] = useState(false);
-  const [newExercise, setNewExercise] = useState("");
-  const fileInputRef = useRef(null);
+  // Data from API
+  const [skillTestData, setSkillTestData] = useState({
+    exercises: [],
+    exams: [],
+    settings: {
+      mainLanguages: ["Hindi", "English"],
+      subLanguages: ["Ramington Gail", "Inscript"],
+      backspaceOptions: ["OFF", "ON"],
+      durations: [2, 5, 10, 15, 20, 30],
+      description: "Matter to type is given on upper half part of screen. Word to type is highlighted. Back space is allowed till current word. Wrong typed word makes bold. So user can identify such mistakes. One or more word afterwards the highlighted word can be skipped, if needed. Skipped word will not added as mistakes.",
+      description_hindi: ""
+    }
+  });
+  const [loading, setLoading] = useState(true);
 
-  const mainLanguages = ["Hindi", "English"];
-  const subLanguages = ["Ramington Gail", "Inscript"];
-  const backspaceOptions = ["OFF", "ON"];
-  const durations = [2, 5, 10, 15, 20, 30];
-  const exams = [
-    "Most Exams (CPCT)",
-    "HighCourt LDC",
-    "RSCIT, RPSC",
-    "SSC, Steno",
-  ];
-
-  const description = `Matter to type is given on upper half part of screen. Word to type is highlighted. Back space is allowed till current word. Wrong typed word makes bold. So user can identify such mistakes. One or more word afterwards the highlighted word can be skipped, if needed. Skipped word will not added as mistakes.`;
-
-  // Load learning data once
+  // Load learning data for exercise content linking
   const [learningData, setLearningData] = useState(null);
+  
+  // Get current user ID
   useEffect(() => {
-    const data = getLearningData();
-    setLearningData(data);
+    const getUserId = async () => {
+      try {
+        const res = await fetch('/api/profile', { credentials: 'include' });
+        if (res.ok) {
+          const data = await res.json();
+          // Profile API returns 'id', not '_id'
+          const userId = data.user?.id || data.user?._id;
+          if (userId) {
+            const userIdString = userId.toString();
+            console.log('[Skill Test] Current user ID:', userIdString);
+            setCurrentUserId(userIdString);
+          } else {
+            console.warn('[Skill Test] No user ID found in profile response:', data);
+          }
+        } else {
+          console.warn('[Skill Test] Failed to fetch profile:', res.status);
+        }
+      } catch (error) {
+        console.error('[Skill Test] Failed to get user ID:', error);
+      }
+    };
+    getUserId();
   }, []);
 
-  // Flatten lessons to map exercises -> lessons without changing UI
+  // Fetch skill test data from API
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        const res = await fetch('/api/skill-test?' + new Date().getTime(), {
+          credentials: 'include'
+        });
+        if (res.ok) {
+          const data = await res.json();
+          console.log('[Skill Test Page] Loaded data:', data.exercises?.length, 'exercises,', data.exams?.length, 'exams');
+          console.log('[Skill Test Page] Exercises:', data.exercises);
+          setSkillTestData(data);
+          
+          // Set default selections only if not already set
+          if (data.exercises && data.exercises.length > 0) {
+            setSelected(prev => prev || data.exercises[0].id);
+          }
+          if (data.exams && data.exams.length > 0) {
+            setSelectedExam(prev => prev || data.exams[0].id);
+          }
+        } else {
+          console.error('Failed to fetch skill test data:', res.status, res.statusText);
+        }
+      } catch (error) {
+        console.error('Failed to fetch skill test data:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchData();
+  }, []);
+
+  // Load learning data for exercise content
+  useEffect(() => {
+    const fetchLearningData = async () => {
+      try {
+        const res = await fetch('/api/learning?' + new Date().getTime());
+        if (res.ok) {
+          const data = await res.json();
+          setLearningData(data);
+        } else {
+          // Fallback to local data
+          const data = getLearningData();
+          setLearningData(data);
+        }
+      } catch (error) {
+        console.error('Failed to fetch learning data:', error);
+        // Fallback to local data
+        const data = getLearningData();
+        setLearningData(data);
+      }
+    };
+    fetchLearningData();
+  }, []);
+
+  // Flatten lessons to map exercises -> lessons
   const lessonsFlat = useMemo(() => {
     if (!learningData) return [];
     const all = [];
-    for (const section of learningData.sections) {
-      for (const lesson of section.lessons) {
+    for (const section of learningData.sections || []) {
+      for (const lesson of section.lessons || []) {
         all.push({ ...lesson, sectionId: section.id, sectionName: section.name });
       }
     }
     return all;
   }, [learningData]);
 
-  // Determine selected lesson by index mapping (stable, no UI change)
-  const selectedIndex = useMemo(() => {
-    const idx = exercises.findIndex((e) => e === selected);
-    return idx >= 0 ? idx : 0;
-  }, [exercises, selected]);
+  // Get selected exercise
+  const selectedExercise = useMemo(() => {
+    return skillTestData.exercises.find(e => e.id === selected);
+  }, [skillTestData.exercises, selected]);
 
-  const selectedLesson = useMemo(() => {
-    if (!lessonsFlat.length) return null;
-    return lessonsFlat[selectedIndex % lessonsFlat.length];
-  }, [lessonsFlat, selectedIndex]);
+  // Get selected exam
+  const selectedExamData = useMemo(() => {
+    return skillTestData.exams.find(e => e.id === selectedExam);
+  }, [skillTestData.exams, selectedExam]);
 
   // Compute preview content based on language/script
   const previewContent = useMemo(() => {
-    if (!selectedLesson) return "";
-    const languageKey = selectedLanguage.toLowerCase();
-    const subLangKey = (selectedSubLanguage || "").toLowerCase().includes("ramington")
-      ? "ramington"
-      : (selectedSubLanguage || "").toLowerCase().includes("inscript")
-      ? "inscript"
-      : "";
-    return getLessonContent(selectedLesson, languageKey, subLangKey) || "";
-  }, [selectedLesson, selectedLanguage, selectedSubLanguage]);
+    if (!selectedExercise) return "";
+    
+    // If exercise is linked to a lesson, use lesson content
+    if (selectedExercise.lessonId) {
+      const linkedLesson = lessonsFlat.find(l => l.id === selectedExercise.lessonId);
+      if (linkedLesson) {
+        const languageKey = selectedLanguage.toLowerCase();
+        const subLangKey = (selectedSubLanguage || "").toLowerCase().includes("ramington")
+          ? "ramington"
+          : (selectedSubLanguage || "").toLowerCase().includes("inscript")
+          ? "inscript"
+          : "";
+        return getLessonContent(linkedLesson, languageKey, subLangKey) || "";
+      }
+    }
+    
+    // Otherwise use exercise's custom content
+    const content = selectedExercise.content || {};
+    if (selectedLanguage.toLowerCase() === "hindi") {
+      if ((selectedSubLanguage || "").toLowerCase().includes("ramington")) {
+        return content.hindi_ramington || "";
+      } else if ((selectedSubLanguage || "").toLowerCase().includes("inscript")) {
+        return content.hindi_inscript || "";
+      }
+      return content.hindi_ramington || "";
+    }
+    return content.english || "";
+  }, [selectedExercise, selectedLanguage, selectedSubLanguage, lessonsFlat]);
 
-  const handleAddExercise = () => {
-    if (newExercise.trim() !== "" && !exercises.includes(newExercise)) {
-      setExercises([newExercise, ...exercises]);
-      setNewExercise("");
-      setShowModal(false);
+  // Get description based on language
+  const description = useMemo(() => {
+    if (!selectedExamData) return skillTestData.settings.description;
+    if (selectedLanguage.toLowerCase() === "hindi" && selectedExamData.description_hindi) {
+      return selectedExamData.description_hindi;
+    }
+    return selectedExamData.description || skillTestData.settings.description;
+  }, [selectedExamData, selectedLanguage, skillTestData.settings.description]);
+
+  // Handle exercise upload
+  const handleUploadExercise = async (e) => {
+    e.preventDefault();
+    
+    if (useFileUpload && uploadFile) {
+      // File upload mode
+      if (!uploadForm.name) {
+        alert('Please enter exercise name');
+        return;
+      }
+
+      setUploading(true);
+      try {
+        const formData = new FormData();
+        formData.append('file', uploadFile);
+        formData.append('name', uploadForm.name);
+        formData.append('difficulty', uploadForm.difficulty);
+
+        const res = await fetch('/api/user-exercises/upload', {
+          method: 'POST',
+          body: formData,
+          credentials: 'include'
+        });
+
+        if (res.ok) {
+          const data = await res.json();
+          alert('Exercise uploaded successfully from file!');
+          setUploadForm({
+            name: "",
+            content_english: "",
+            content_hindi_ramington: "",
+            content_hindi_inscript: "",
+            difficulty: "beginner"
+          });
+          setUploadFile(null);
+          setUseFileUpload(false);
+          setShowUploadForm(false);
+          // Refresh data
+          window.location.reload();
+        } else {
+          const data = await res.json();
+          if (data.extractedText) {
+            // If extraction partially worked, show the text and let user edit
+            setUploadForm({
+              ...uploadForm,
+              content_english: data.extractedText
+            });
+            setUseFileUpload(false);
+            alert('Text extracted from file. Please review and edit the content, then submit again.');
+          } else {
+            alert('Upload failed: ' + (data.error || 'Unknown error'));
+          }
+        }
+      } catch (error) {
+        console.error('Upload error:', error);
+        alert('Upload failed: ' + error.message);
+      } finally {
+        setUploading(false);
+      }
+    } else {
+      // Manual text entry mode
+      if (!uploadForm.name || !uploadForm.content_english) {
+        alert('Please fill in exercise name and English content');
+        return;
+      }
+
+      setUploading(true);
+      try {
+        const res = await fetch('/api/user-exercises', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({
+            name: uploadForm.name,
+            content: {
+              english: uploadForm.content_english,
+              hindi_ramington: uploadForm.content_hindi_ramington,
+              hindi_inscript: uploadForm.content_hindi_inscript
+            },
+            difficulty: uploadForm.difficulty
+          })
+        });
+
+        if (res.ok) {
+          alert('Exercise uploaded successfully!');
+          setUploadForm({
+            name: "",
+            content_english: "",
+            content_hindi_ramington: "",
+            content_hindi_inscript: "",
+            difficulty: "beginner"
+          });
+          setShowUploadForm(false);
+          // Refresh data
+          window.location.reload();
+        } else {
+          const data = await res.json();
+          alert('Upload failed: ' + (data.error || 'Unknown error'));
+        }
+      } catch (error) {
+        console.error('Upload error:', error);
+        alert('Upload failed: ' + error.message);
+      } finally {
+        setUploading(false);
+      }
     }
   };
 
-  const handleDeleteExercise = () => {
-    const filtered = exercises.filter((item) => item !== selected);
-    setExercises(filtered);
-    setSelected(filtered[0] || "");
-  };
-
-  const handleLoadExercise = () => {
-    if (fileInputRef.current) {
-      fileInputRef.current.click();
+  // Handle exercise delete
+  const handleDeleteExercise = async (exercise) => {
+    // Basic validation - backend will verify ownership
+    if (!exercise.isUserExercise || !exercise._id) {
+      alert('You can only delete your own exercises');
+      return;
     }
-  };
 
-  const handleFileChange = (e) => {
-    const file = e.target.files[0];
-    if (file && file.name.endsWith(".txt")) {
-      const reader = new FileReader();
-      reader.onload = (event) => {
-        alert("Loaded File:\n" + event.target.result.slice(0, 200) + "...");
-      };
-      reader.readAsText(file);
+    if (!confirm(`Are you sure you want to delete "${exercise.name}"? This action cannot be undone.`)) {
+      return;
+    }
+
+    try {
+      const res = await fetch(`/api/user-exercises?_id=${exercise._id}`, {
+        method: 'DELETE',
+        credentials: 'include'
+      });
+
+      if (res.ok) {
+        // Remove the exercise from the list without full page reload
+        setSkillTestData(prev => ({
+          ...prev,
+          exercises: prev.exercises.filter(ex => ex._id !== exercise._id)
+        }));
+        
+        // If deleted exercise was selected, clear selection
+        if (selected === exercise.id) {
+          setSelected('');
+        }
+        
+        alert('Exercise deleted successfully!');
+      } else {
+        const data = await res.json();
+        alert('Delete failed: ' + (data.error || 'Unknown error'));
+      }
+    } catch (error) {
+      console.error('Delete error:', error);
+      alert('Delete failed: ' + error.message);
     }
   };
 
   return (
-    <div className="min-h-screen bg-[#fff] p-4 font-sans">
-      {/* Language & Duration */}
-      <div className="grid grid-cols-3 gap-1 md:gap-4">
-  {/* Language Selection */}
-  <div className="bg-[#290c52] p-[6px] md:p-4 rounded shadow-md text-white">
-    <h2 className="font-bold text-[9px] md:text-lg mb-2 border-b border-white pb-1">
-      1. Select Typing Language
-    </h2>
-    <div className="grid grid-cols-2 gap-1 text-black mb-2">
-      {mainLanguages.map((lang) => (
-        <label
-          key={lang}
-          className="bg-white px-1 py-1 rounded flex items-center gap-1 w-full"
-        >
-          <input
-            type="radio"
-            name="mainLanguage"
-            className="w-3 h-3"
-            value={lang}
-            checked={selectedLanguage === lang}
-            onChange={(e) => {
-              setSelectedLanguage(e.target.value);
-              setSelectedSubLanguage("");
-            }}
-          />
-          <p className="text-[8px] md:text-sm">{lang}</p>
-        </label>
-      ))}
-    </div>
-    <div className="grid grid-cols-2 gap-1 text-black">
-      {subLanguages.map((subLang) => {
-        const disabled = selectedLanguage !== "Hindi";
-        return (
-          <label
-            key={subLang}
-            className={`${
-              disabled ? "opacity-50 cursor-not-allowed" : ""
-            } bg-white px-1 py-1 rounded flex items-center gap-1 w-full`}
-          >
-            <input
-              type="radio"
-              name="subLanguage"
-              className="w-3 h-3"
-              value={subLang}
-              disabled={disabled}
-              checked={selectedSubLanguage === subLang}
-              onChange={(e) => setSelectedSubLanguage(e.target.value)}
-            />
-            <p className="text-[7px] md:text-sm">{subLang}</p>
-          </label>
-        );
-      })}
-    </div>
-  </div>
+    <div className="min-h-screen bg-white p-4 md:p-6 font-sans">
+      {/* Header */}
+      <div className="bg-[#290c52] text-yellow-400 p-3 md:p-4 rounded-t-lg shadow-md mb-4">
+        <h1 className="text-lg md:text-2xl font-bold text-center">Skill Test Configuration</h1>
+      </div>
 
-  {/* Duration */}
-  <div className="bg-[#290c52] p-[6px] md:p-4 rounded shadow-md text-white">
-    <h2 className="font-bold text-[9px] md:text-lg mb-2 border-b border-white pb-1">
-      2. Select Duration in Minutes
-    </h2>
-    <div className="grid grid-cols-3 gap-1 mt-4">
-      {durations.map((time) => (
-        <label
-          key={time}
-          className={`px-1 py-1 rounded text-center font-medium cursor-pointer bg-white text-black border border-gray-400 text-[8px] md:text-base ${
-            duration === time ? "bg-blue-200" : ""
-          }`}
-        >
-          <input
-            type="radio"
-            name="duration"
-            value={time}
-            className="mr-1"
-            onChange={() => setDuration(time)}
-            checked={duration === time}
-          />
-          {time}M
-        </label>
-      ))}
-    </div>
-  </div>
-
-  {/* Backspace */}
-  <div className="bg-[#290c52] p-[6px] md:p-4 rounded shadow-md text-white">
-    <h2 className="font-bold text-[11px] md:text-lg mb-2 border-b border-white pb-1">
-      3. Backspace
-    </h2>
-    <div className="grid grid-cols-2 gap-1 mt-4">
-      {backspaceOptions.map((option) => (
-        <label
-          key={option}
-          className={`px-1 py-1 rounded text-center font-medium cursor-pointer bg-white text-black border border-gray-400 text-[8px] md:text-base ${
-            backspace === option ? "bg-blue-200" : ""
-          }`}
-        >
-          <input
-            type="radio"
-            name="backspace"
-            value={option}
-            className="mr-1"
-            onChange={() => setBackspace(option)}
-            checked={backspace === option}
-          />
-          {option}
-        </label>
-      ))}
-    </div>
-  </div>
-</div>
-
-      {/* Exercise Selection & Preview */}
-      <div className="flex md:w-auto min-h-[70vh] font-serif bg-white rounded shadow overflow-hidden">
-        {/* Sidebar */}
-        <div className="w-[40%] md:w-1/4 border-r border-gray-300 bg-[#fff] p-3 mt-1 md:mt-0">
-          <h3 className="text-[10px] md:text-sm font-semibold mb-1">4. Select Exercise</h3>
-          <div
-            className="h-84 md:h-64 overflow-y-scroll pr-1 border border-gray-300 rounded bg-white"
-            style={{
-              scrollbarWidth: "thin",
-              scrollbarColor: "#a0aec0 #f1f1f1",
-            }}
-          >
-            <style jsx>{`
-              div::-webkit-scrollbar {
-                width: 6px;
-              }
-              div::-webkit-scrollbar-track {
-                background: #f1f1f1;
-              }
-              div::-webkit-scrollbar-thumb {
-                background-color: #a0aec0;
-                border-radius: 10px;
-              }
-            `}</style>
-
-            {exercises.map((item) => (
-              <div
-                key={item}
-                className={`text-[10px] md:text-sm px-2 py-1 cursor-pointer ${
-                  selected === item
-                    ? "bg-blue-500 text-white"
-                    : "hover:bg-gray-100"
-                }`}
-                onClick={() => setSelected(item)}
-              >
-                {item}
+      {/* Settings Section - Top Row */}
+      <div className="bg-white border border-gray-200 rounded-lg shadow-md p-4 md:p-6 mb-4">
+        <h2 className="text-base md:text-xl font-bold text-gray-800 mb-4 pb-2 border-b-2 border-gray-300">
+          Test Settings
+        </h2>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 md:gap-6">
+          {/* Language Selection */}
+          <div className="bg-gradient-to-br from-[#290c52]/10 to-[#290c52]/20 p-4 rounded-lg border-2 border-[#290c52]/30">
+            <h3 className="font-bold text-sm md:text-base mb-3 text-gray-800 flex items-center gap-2">
+              <span className="bg-[#290c52] text-white rounded-full w-6 h-6 flex items-center justify-center text-xs">1</span>
+              Select Typing Language
+            </h3>
+            <div className="space-y-2 mb-3">
+              <div className="text-xs md:text-sm font-medium text-gray-700 mb-1">Main Language:</div>
+              <div className="grid grid-cols-2 gap-2">
+                {(skillTestData.settings.mainLanguages || []).map((lang) => (
+                  <label
+                    key={lang}
+                    className={`flex items-center gap-2 p-2 rounded cursor-pointer transition-all ${
+                      selectedLanguage === lang
+                        ? "bg-[#290c52] text-white shadow-md"
+                        : "bg-white hover:bg-[#290c52]/10 border border-gray-300"
+                    }`}
+                  >
+                    <input
+                      type="radio"
+                      name="mainLanguage"
+                      className="w-4 h-4"
+                      value={lang}
+                      checked={selectedLanguage === lang}
+                      onChange={(e) => {
+                        setSelectedLanguage(e.target.value);
+                        setSelectedSubLanguage("");
+                      }}
+                    />
+                    <span className="text-xs md:text-sm font-medium">{lang}</span>
+                  </label>
+                ))}
               </div>
-            ))}
-          </div>
-
-          {/* Buttons */}
-          <div className="mt-4 flex flex-col gap-2">
-            <button
-              onClick={() => setShowModal(true)}
-              className="bg-[#290c52] cursor-pointer text-white text-[10px] md:text-sm px-2 py-1 rounded hover:bg-blue-500"
-            >
-              Add Exercise(+)
-            </button>
-            <button
-              onClick={handleDeleteExercise}
-              className="bg-red-500 cursor-pointer text-white text-[10px] md:text-sm px-2 py-1 rounded hover:bg-red-600"
-            >
-              Delete Exercise(-)
-            </button>
-            <button
-              onClick={handleLoadExercise}
-              className="bg-pink-500 cursor-pointer text-white text-[10px] md:text-sm px-2 py-1 rounded hover:bg-yellow-600"
-            >
-              Load Exercise
-            </button>
-            <input
-              type="file"
-              accept=".txt"
-              ref={fileInputRef}
-              className="hidden"
-              onChange={handleFileChange}
-            />
-          </div>
-        </div>
-
-        {/* Preview */}
-        <div className="flex-1 p-4">
-          <div className="flex justify-between items-center mb-2">
-            <h2 className="font-semibold text-[10px] md:text-sm">Exercise</h2>
-          </div>
-          <div className="border border-gray-300 p-3 text-[10px] md:text-sm leading-6 h-[50vh] overflow-y-scroll bg-[#fefefe] rounded">
-            {previewContent || (
-              <>
-                Brexit was quoted as being the financial equivalent of doomsday for
-                Britain's economy...
-              </>
+            </div>
+            {selectedLanguage === "Hindi" && (
+              <div className="space-y-2 mt-3 pt-3 border-t border-[#290c52]/30">
+                <div className="text-xs md:text-sm font-medium text-gray-700 mb-1">Script Type:</div>
+                <div className="grid grid-cols-2 gap-2">
+                  {(skillTestData.settings.subLanguages || []).map((subLang) => (
+                    <label
+                      key={subLang}
+                      className={`flex items-center gap-2 p-2 rounded cursor-pointer transition-all ${
+                        selectedSubLanguage === subLang
+                          ? "bg-[#290c52] text-white shadow-md"
+                          : "bg-white hover:bg-[#290c52]/10 border border-gray-300"
+                      }`}
+                    >
+                      <input
+                        type="radio"
+                        name="subLanguage"
+                        className="w-4 h-4"
+                        value={subLang}
+                        checked={selectedSubLanguage === subLang}
+                        onChange={(e) => setSelectedSubLanguage(e.target.value)}
+                      />
+                      <span className="text-xs md:text-sm font-medium">{subLang}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
             )}
           </div>
-          <div className="mt-8 text-[6px] md:text-md text-gray-700">
-            <p>
-              Total Characters: <b>{previewContent ? previewContent.length : 5067}</b>
-              <span className="pl-10">Total Words: <b>{previewContent ? (previewContent.trim().split(/\s+/).length) : 848}</b></span>
-            </p>
-          </div>
-        </div>
-      </div>
 
-      {/* Exam Selector */}
-      <div className="flex border text-sm font-serif w-full max-w-8xl mx-auto mt-4 rounded shadow overflow-hidden bg-white">
-        <div className="w-1/4 border-r p-2 bg-[#fff]">
-          <h3 className="text-gray-800 font-semibold mb-2 text-[10px] md:text-sm">5. Select Exam</h3>
-          <ul className="space-y-1">
-            {exams.map((exam) => (
-              <li
-                key={exam}
-                onClick={() => setSelectedExam(exam)}
-                className={`cursor-pointer px-2 py-1 rounded-l text-[10px] md:text-sm ${
-                  selectedExam === exam
-                    ? "text-red-600 font-semibold border-l-4 border-red-500 bg-white"
-                    : "text-blue-700 hover:bg-gray-100"
-                }`}
-              >
-                {exam}
-              </li>
-            ))}
-          </ul>
-        </div>
-
-        <div className="flex-1 flex flex-col justify-between p-3 bg-white relative overflow-auto">
-          <div className="flex flex-row justify-between items-start gap-4">
-            <h3 className="font-semibold text-gray-800 mb-2 text-sm md:text-lg">
-              Exam Description
+          {/* Duration */}
+          <div className="bg-gradient-to-br from-[#290c52]/10 to-[#290c52]/20 p-4 rounded-lg border-2 border-[#290c52]/30">
+            <h3 className="font-bold text-sm md:text-base mb-3 text-gray-800 flex items-center gap-2">
+              <span className="bg-[#290c52] text-white rounded-full w-6 h-6 flex items-center justify-center text-xs">2</span>
+              Select Duration (Minutes)
             </h3>
-            <button className="bg-green-500 text-white w-[300px] px-4 py-1 mx-auto cursor-pointer rounded text-sm md:text-lg shadow hover:bg-green-600 transition-colors">
-              <a href={"/typing"}>Start Test</a>
-            </button>
+            <div className="grid grid-cols-3 gap-2">
+              {(skillTestData.settings.durations || []).map((time) => (
+                <label
+                  key={time}
+                  className={`p-2 rounded text-center font-medium cursor-pointer transition-all border-2 ${
+                    duration === time
+                      ? "bg-[#290c52] text-white border-[#290c52] shadow-md transform scale-105"
+                      : "bg-white hover:bg-[#290c52]/10 border-gray-300"
+                  }`}
+                >
+                  <input
+                    type="radio"
+                    name="duration"
+                    value={time}
+                    className="hidden"
+                    onChange={() => setDuration(time)}
+                    checked={duration === time}
+                  />
+                  <span className="text-xs md:text-sm">{time}M</span>
+                </label>
+              ))}
+            </div>
           </div>
-          <div className="text-green-700 leading-relaxed text-justify mt-1 text-[10px]  md:overflow-auto md:text-sm">
-            {description}
-          </div>
-        </div>
-      </div>
 
-      {/* Modal for Adding Exercise */}
-      {showModal && (
-        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50">
-          <div className="bg-white p-6 rounded shadow-md w-[300px]">
-            <h2 className="text-lg font-semibold mb-2 text-center">
-              Add Exercise
-            </h2>
-            <input
-              type="text"
-              value={newExercise}
-              onChange={(e) => setNewExercise(e.target.value)}
-              className="w-full border border-gray-300 rounded px-3 py-1 mb-4"
-              placeholder="Exercise name"
-            />
-            <div className="flex justify-between">
-              <button
-                onClick={handleAddExercise}
-                className="bg-green-600 text-white px-4 py-1 rounded hover:bg-green-700"
-              >
-                Add
-              </button>
-              <button
-                onClick={() => {
-                  setNewExercise("");
-                  setShowModal(false);
-                }}
-                className="bg-gray-400 text-white px-4 py-1 rounded hover:bg-gray-600"
-              >
-                Cancel
-              </button>
+          {/* Backspace */}
+          <div className="bg-gradient-to-br from-[#290c52]/10 to-[#290c52]/20 p-4 rounded-lg border-2 border-[#290c52]/30">
+            <h3 className="font-bold text-sm md:text-base mb-3 text-gray-800 flex items-center gap-2">
+              <span className="bg-[#290c52] text-white rounded-full w-6 h-6 flex items-center justify-center text-xs">3</span>
+              Backspace Option
+            </h3>
+            <div className="grid grid-cols-2 gap-2">
+              {(skillTestData.settings.backspaceOptions || []).map((option) => (
+                <label
+                  key={option}
+                  className={`p-3 rounded text-center font-medium cursor-pointer transition-all border-2 ${
+                    backspace === option
+                      ? "bg-[#290c52] text-white border-[#290c52] shadow-md transform scale-105"
+                      : "bg-white hover:bg-[#290c52]/10 border-gray-300"
+                  }`}
+                >
+                  <input
+                    type="radio"
+                    name="backspace"
+                    value={option}
+                    className="hidden"
+                    onChange={() => setBackspace(option)}
+                    checked={backspace === option}
+                  />
+                  <span className="text-xs md:text-sm font-semibold">{option}</span>
+                </label>
+              ))}
             </div>
           </div>
         </div>
-      )}
+      </div>
+
+      {/* Exercise Selection & Preview - Main Content Area */}
+      <div className="bg-white border border-gray-200 rounded-lg shadow-md overflow-hidden mb-4">
+        <div className="bg-[#290c52] text-white p-3 border-b border-gray-300">
+          <h2 className="text-base md:text-xl font-bold text-white flex items-center gap-2">
+            <span className="bg-yellow-400 text-[#290c52] rounded-full w-6 h-6 flex items-center justify-center text-xs font-bold">4</span>
+            Select Exercise & Preview Content
+          </h2>
+        </div>
+        <div className="flex flex-col md:flex-row min-h-[500px]">
+          {/* Exercise List - Left Sidebar */}
+          <div className="w-full md:w-80 border-r border-gray-300 bg-white p-4">
+            <div className="flex justify-between items-center mb-3">
+              <h3 className="text-sm md:text-base font-semibold text-gray-700">Available Exercises</h3>
+              <button
+                onClick={() => setShowUploadForm(!showUploadForm)}
+                className="bg-[#290c52] hover:bg-[#3d1470] text-white px-3 py-1 rounded text-xs font-semibold transition-colors"
+              >
+                {showUploadForm ? 'Cancel' : '+ Upload'}
+              </button>
+            </div>
+            
+            {/* Upload Form */}
+            {showUploadForm && (
+              <div className="mb-4 p-3 bg-purple-50 border border-purple-200 rounded-lg">
+                <form onSubmit={handleUploadExercise} className="space-y-2">
+                  <input
+                    type="text"
+                    placeholder="Exercise Name *"
+                    value={uploadForm.name}
+                    onChange={(e) => setUploadForm({...uploadForm, name: e.target.value})}
+                    className="w-full border rounded px-2 py-1 text-sm"
+                    required
+                  />
+                  
+                  {/* File Upload Toggle */}
+                  <div className="bg-blue-50 p-2 rounded border border-blue-200">
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={useFileUpload}
+                        onChange={(e) => {
+                          setUseFileUpload(e.target.checked);
+                          if (e.target.checked) {
+                            setUploadForm({...uploadForm, content_english: ""});
+                          }
+                        }}
+                        className="w-4 h-4"
+                      />
+                      <span className="text-xs font-medium">Upload from File (PDF/Word/TXT)</span>
+                    </label>
+                    <p className="text-xs text-gray-600 mt-1 ml-6">
+                      Check to upload PDF, Word (.doc, .docx), or Text file. Uncheck to enter text manually.
+                    </p>
+                  </div>
+
+                  {useFileUpload ? (
+                    <div>
+                      <label className="block text-xs font-medium mb-1">Select File (PDF/Word/TXT) *</label>
+                      <input
+                        type="file"
+                        accept=".pdf,.doc,.docx,.txt"
+                        onChange={(e) => setUploadFile(e.target.files[0])}
+                        className="w-full border rounded px-2 py-1 text-sm"
+                        required
+                      />
+                      <p className="text-xs text-gray-500 mt-1">
+                        Supported: PDF, Word (.doc, .docx), Text (.txt)
+                      </p>
+                    </div>
+                  ) : (
+                    <>
+                      <textarea
+                        placeholder="English Content *"
+                        value={uploadForm.content_english}
+                        onChange={(e) => setUploadForm({...uploadForm, content_english: e.target.value})}
+                        className="w-full border rounded px-2 py-1 text-sm"
+                        rows="3"
+                        required
+                      />
+                      <textarea
+                        placeholder="Hindi Ramington (Optional)"
+                        value={uploadForm.content_hindi_ramington}
+                        onChange={(e) => setUploadForm({...uploadForm, content_hindi_ramington: e.target.value})}
+                        className="w-full border rounded px-2 py-1 text-sm"
+                        rows="2"
+                      />
+                      <textarea
+                        placeholder="Hindi Inscript (Optional)"
+                        value={uploadForm.content_hindi_inscript}
+                        onChange={(e) => setUploadForm({...uploadForm, content_hindi_inscript: e.target.value})}
+                        className="w-full border rounded px-2 py-1 text-sm"
+                        rows="2"
+                      />
+                    </>
+                  )}
+                  
+                  <select
+                    value={uploadForm.difficulty}
+                    onChange={(e) => setUploadForm({...uploadForm, difficulty: e.target.value})}
+                    className="w-full border rounded px-2 py-1 text-sm"
+                  >
+                    <option value="beginner">Beginner</option>
+                    <option value="intermediate">Intermediate</option>
+                    <option value="advanced">Advanced</option>
+                  </select>
+                  <button
+                    type="submit"
+                    disabled={uploading}
+                    className="w-full bg-green-600 hover:bg-green-700 disabled:bg-gray-400 text-white px-3 py-2 rounded text-sm font-semibold"
+                  >
+                    {uploading ? 'Uploading...' : useFileUpload ? 'Upload from File' : 'Upload Exercise'}
+                  </button>
+                </form>
+              </div>
+            )}
+            <div
+              className="h-[450px] overflow-y-auto pr-2 border border-gray-300 rounded-lg bg-white shadow-inner"
+              style={{
+                scrollbarWidth: "thin",
+                scrollbarColor: "#a0aec0 #f1f1f1",
+              }}
+            >
+              <style jsx>{`
+                div::-webkit-scrollbar {
+                  width: 8px;
+                }
+                div::-webkit-scrollbar-track {
+                  background: #f1f1f1;
+                  border-radius: 4px;
+                }
+                div::-webkit-scrollbar-thumb {
+                  background-color: #a0aec0;
+                  border-radius: 4px;
+                }
+                div::-webkit-scrollbar-thumb:hover {
+                  background-color: #718096;
+                }
+              `}</style>
+
+              {loading ? (
+                <div className="text-center py-8 text-gray-500">
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#290c52] mx-auto mb-2"></div>
+                  <p className="text-sm">Loading exercises...</p>
+                </div>
+              ) : !skillTestData.exercises || skillTestData.exercises.length === 0 ? (
+                <div className="text-center py-8 text-gray-500">
+                  <p className="text-sm mb-2">No exercises available</p>
+                  <button
+                    onClick={() => window.location.reload()}
+                    className="text-xs text-blue-600 hover:text-blue-800 underline"
+                  >
+                    Refresh Page
+                  </button>
+                </div>
+              ) : (
+                skillTestData.exercises.map((exercise, index) => {
+                  // Debug logging for user exercises
+                  if (exercise.isUserExercise) {
+                    console.log('[Skill Test] User exercise found:', {
+                      name: exercise.name,
+                      exerciseUserId: exercise.userId,
+                      exerciseUserIdType: typeof exercise.userId,
+                      currentUserId: currentUserId,
+                      currentUserIdType: typeof currentUserId,
+                      isUserExercise: exercise.isUserExercise,
+                      _id: exercise._id
+                    });
+                  }
+                  
+                  // Check if this is the current user's exercise
+                  const isMyExercise = exercise.isUserExercise && 
+                                       exercise.userId && 
+                                       currentUserId && 
+                                       (String(exercise.userId) === String(currentUserId) || 
+                                        exercise.userId.toString() === currentUserId.toString());
+                  
+                  return (
+                  <div
+                    key={exercise.id}
+                    className={`p-3 mb-2 rounded-lg transition-all ${
+                      selected === exercise.id
+                        ? "bg-[#290c52] text-white shadow-lg transform scale-[1.02]"
+                        : "bg-white hover:bg-[#290c52]/10 border border-gray-200 hover:border-[#290c52]/30"
+                    }`}
+                  >
+                    <div 
+                      className="flex items-center justify-between gap-2"
+                    >
+                      <div 
+                        className="flex items-center gap-2 flex-1 cursor-pointer"
+                        onClick={() => setSelected(exercise.id)}
+                      >
+                        <span className={`text-xs font-bold ${
+                          selected === exercise.id ? "text-yellow-400" : "text-[#290c52]"
+                        }`}>
+                          {index + 1}.
+                        </span>
+                        <div className="text-xs md:text-sm font-medium flex-1 flex items-center gap-2">
+                          {exercise.name}
+                          {exercise.isUserExercise && (
+                            <span className="text-[8px] md:text-[10px] bg-green-100 text-green-700 px-1.5 py-0.5 rounded" title="Your uploaded exercise">
+                              📤 Your Upload
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                      {exercise.isUserExercise && (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDeleteExercise(exercise);
+                          }}
+                          className="bg-red-500 hover:bg-red-600 text-white px-3 py-1.5 rounded text-xs font-semibold transition-colors flex items-center justify-center gap-1 shadow-md hover:shadow-lg flex-shrink-0 z-10"
+                          title="Delete your uploaded exercise"
+                          aria-label="Delete exercise"
+                        >
+                          <span>🗑️</span>
+                          <span>Delete</span>
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                )})
+              )}
+            </div>
+          </div>
+
+          {/* Exercise Preview - Right Content */}
+          <div className="flex-1 p-4 md:p-6 bg-white border-l border-gray-200">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-base md:text-lg font-semibold text-gray-800">
+                {selectedExercise ? selectedExercise.name : "Exercise Preview"}
+              </h3>
+              {previewContent && (
+                <div className="text-xs md:text-sm text-gray-600 bg-gray-100 px-3 py-1 rounded-full">
+                  <span className="font-semibold">Characters:</span> {previewContent.length} | 
+                  <span className="font-semibold ml-2">Words:</span> {previewContent.trim().split(/\s+/).length}
+                </div>
+              )}
+            </div>
+            <div className="border-2 border-gray-300 p-4 md:p-6 text-sm md:text-base leading-relaxed h-[450px] overflow-y-auto bg-gray-50 rounded-lg shadow-inner font-serif">
+              {previewContent ? (
+                <div className="text-gray-800 whitespace-pre-wrap">{previewContent}</div>
+              ) : (
+                <div className="text-gray-400 text-center py-20">
+                  <p className="text-lg mb-2">No exercise selected</p>
+                  <p className="text-sm">Please select an exercise from the left panel to preview its content</p>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Exam Selection & Start Test */}
+      <div className="bg-white border border-gray-200 rounded-lg shadow-md overflow-hidden">
+        <div className="bg-[#290c52] text-white p-3 border-b border-gray-300">
+          <h2 className="text-base md:text-xl font-bold text-white flex items-center gap-2">
+            <span className="bg-yellow-400 text-[#290c52] rounded-full w-6 h-6 flex items-center justify-center text-xs font-bold">5</span>
+            Select Exam & Start Test
+          </h2>
+        </div>
+        <div className="flex flex-col md:flex-row">
+          {/* Exam List - Left Sidebar */}
+          <div className="w-full md:w-80 border-r border-gray-300 bg-gray-50 p-4">
+            <h3 className="text-sm md:text-base font-semibold mb-3 text-gray-700">Available Exams</h3>
+            <div className="space-y-2">
+              {loading ? (
+                <div className="text-center py-4 text-gray-500 text-sm">Loading exams...</div>
+              ) : skillTestData.exams.length === 0 ? (
+                <div className="text-center py-4 text-gray-500 text-sm">No exams available</div>
+              ) : (
+                skillTestData.exams.map((exam) => (
+                  <div
+                    key={exam.id}
+                    onClick={() => setSelectedExam(exam.id)}
+                    className={`p-3 rounded-lg cursor-pointer transition-all ${
+                      selectedExam === exam.id
+                        ? "bg-[#290c52] text-white shadow-lg transform scale-[1.02] border-2 border-[#290c52]"
+                        : "bg-white hover:bg-[#290c52]/10 border border-gray-200 hover:border-[#290c52]/30"
+                    }`}
+                  >
+                    <div className="text-xs md:text-sm font-medium">{exam.name}</div>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+
+          {/* Exam Description & Start Button */}
+          <div className="flex-1 p-4 md:p-6 bg-white">
+            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-4">
+              <h3 className="text-base md:text-lg font-semibold text-gray-800">Exam Description</h3>
+              <a
+                href={selected ? `/typing?exercise=${selected}&language=${selectedLanguage.toLowerCase()}&subLanguage=${selectedSubLanguage.toLowerCase()}&duration=${duration}&backspace=${backspace}` : '#'}
+                className={`w-full md:w-auto px-6 py-3 rounded-lg text-sm md:text-base font-semibold shadow-md transition-all text-center ${
+                  selected 
+                    ? 'bg-[#290c52] text-white hover:bg-[#3d1470] transform hover:scale-105' 
+                    : 'bg-gray-400 text-white cursor-not-allowed'
+                }`}
+                onClick={(e) => {
+                  if (!selected) {
+                    e.preventDefault();
+                    alert('Please select an exercise first');
+                  }
+                }}
+              >
+                {selected ? '▶ Start Test' : 'Select an Exercise First'}
+              </a>
+            </div>
+            <div className="bg-[#290c52]/10 border-l-4 border-[#290c52] p-4 rounded-r-lg">
+              <p className="text-sm md:text-base text-gray-700 leading-relaxed text-justify">
+                {description || "No description available for the selected exam."}
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

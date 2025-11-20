@@ -29,6 +29,26 @@ export async function GET(request) {
       return NextResponse.json({ error: "User not found" }, { status: 404 });
     }
 
+    // Get user's active subscriptions
+    const Subscription = (await import("@/lib/models/Subscription")).default;
+    
+    // First try to find "all" type subscription
+    let activeSubscription = await Subscription.findOne({
+      userId: user._id,
+      type: "all",
+      status: "active",
+      endDate: { $gt: new Date() }
+    }).sort({ endDate: -1 });
+
+    // If no "all" type, get any active subscription
+    if (!activeSubscription) {
+      activeSubscription = await Subscription.findOne({
+        userId: user._id,
+        status: "active",
+        endDate: { $gt: new Date() }
+      }).sort({ endDate: -1 });
+    }
+
     return NextResponse.json({
       user: {
         id: user._id,
@@ -37,8 +57,20 @@ export async function GET(request) {
         phoneNumber: user.phoneNumber,
         profileUrl: user.profileUrl,
         states: user.states,
-        city: user.city
-      }
+        city: user.city,
+        role: user.role || "user",
+        referralCode: user.referralCode || null,
+        referralRewards: user.referralRewards || 0
+      },
+      subscription: activeSubscription ? {
+        id: activeSubscription._id,
+        type: activeSubscription.type,
+        plan: activeSubscription.plan,
+        status: activeSubscription.status,
+        startDate: activeSubscription.startDate,
+        endDate: activeSubscription.endDate,
+        price: activeSubscription.price
+      } : null
     });
 
   } catch (err) {

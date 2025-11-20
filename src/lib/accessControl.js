@@ -14,12 +14,23 @@ export async function checkAccess(userId, contentType, itemId = null) {
     }
 
     // Check if user has active subscription
-    const subscription = await Subscription.findOne({
+    // First check for "all" type subscription (unified subscription)
+    let subscription = await Subscription.findOne({
       userId,
-      type: contentType,
+      type: "all",
       status: "active",
       endDate: { $gt: new Date() }
     });
+
+    // If no unified subscription, check for specific type subscription
+    if (!subscription) {
+      subscription = await Subscription.findOne({
+        userId,
+        type: contentType,
+        status: "active",
+        endDate: { $gt: new Date() }
+      });
+    }
 
     if (subscription) {
       return { hasAccess: true, reason: "subscription", subscription };

@@ -1,30 +1,335 @@
-import React from "react";
+"use client";
+import React, { useState, useEffect } from "react";
+import jsPDF from "jspdf";
 
 export default function ExamSummary() {
+  const [userName, setUserName] = useState("User");
+  const [examData, setExamData] = useState(null);
+  const [sections, setSections] = useState([]);
+  const [questions, setQuestions] = useState({});
+  const [selectedAnswers, setSelectedAnswers] = useState({});
+  const [sectionStats, setSectionStats] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    const loadResultData = async () => {
+      try {
+        setLoading(true);
+        
+        // Check if all sections are completed
+        const savedCompletedSections = localStorage.getItem('completedSections');
+        const examId = localStorage.getItem('currentExamId');
+        
+        if (!examId) {
+          console.error('No exam ID found');
+          setLoading(false);
+          return;
+        }
+
+        // Fetch exam data to get total sections
+        const examRes = await fetch(`/api/exam-questions?examId=${examId}`);
+        if (examRes.ok) {
+          const examData = await examRes.json();
+          if (examData.success && examData.data) {
+            const totalSections = examData.data.sections?.length || 0;
+            const completedSections = savedCompletedSections ? JSON.parse(savedCompletedSections) : [];
+            
+            // If not all sections completed, redirect back to exam
+            if (completedSections.length < totalSections) {
+              alert('Please complete all sections before viewing results.');
+              window.location.href = '/exam_mode';
+              return;
+            }
+          }
+        }
+        
+        // Load user data
+        const userDataStr = localStorage.getItem('examUserData');
+        if (userDataStr) {
+          try {
+            const userData = JSON.parse(userDataStr);
+            if (userData.name) {
+              setUserName(userData.name);
+            }
+          } catch (error) {
+            console.error('Error parsing user data:', error);
+          }
+        }
+
+        // Load selected answers
+        const answersStr = localStorage.getItem('examAnswers');
+        let loadedAnswers = {};
+        if (answersStr) {
+          try {
+            loadedAnswers = JSON.parse(answersStr);nv
+            setSelectedAnswers(loadedAnswers);
+          } catch (error) {
+            console.error('Error parsing answers:', error);
+          }
+        }
+
+        // Fetch exam data
+        const res = await fetch(`/api/exam-questions?examId=${examId}`);
+        if (res.ok) {
+          const data = await res.json();
+          if (data.success && data.data) {
+            setExamData(data.data.exam);
+            setSections(data.data.sections || []);
+            
+            // Organize questions by section
+            const questionsBySection = {};
+            data.data.sections.forEach(sec => {
+              const sectionQuestions = data.data.allQuestions.filter(q => {
+                const qSectionId = String(q.sectionId).trim();
+                const secIdStr = String(sec.id).trim();
+                const secIdObj = String(sec._id).trim();
+                return qSectionId === secIdObj || 
+                       qSectionId === secIdStr ||
+                       qSectionId === sec._id.toString() ||
+                       qSectionId === sec.id;
+              });
+              questionsBySection[sec.name] = sectionQuestions;
+            });
+            setQuestions(questionsBySection);
+            
+            // Calculate section statistics using loaded answers
+            const stats = [];
+            data.data.sections.forEach(sec => {
+              const secQuestions = questionsBySection[sec.name] || [];
+              let answered = 0;
+              let notAnswered = 0;
+              let markedForReview = 0;
+              let answeredAndMarked = 0;
+              let notVisited = 0;
+              let correct = 0;
+              let incorrect = 0;
+              
+              secQuestions.forEach(q => {
+                const answer = loadedAnswers[q._id];
+                if (answer !== undefined && answer !== null) {
+                  answered++;
+                  if (answer === q.correctAnswer) {
+                    correct++;
+                  } else {
+                    incorrect++;
+                  }
+                } else {
+                  notAnswered++;
+                }
+                notVisited++; // For now, we'll track this separately if needed
+              });
+              
+              stats.push({
+                sectionName: sec.name,
+                totalQuestions: secQuestions.length,
+                answered,
+                notAnswered,
+                markedForReview,
+                answeredAndMarked,
+                notVisited: secQuestions.length - answered,
+                correct,
+                incorrect,
+                score: correct
+              });
+            });
+            setSectionStats(stats);
+          }
+        }
+      } catch (error) {
+        console.error('Error loading result data:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadResultData();
+  }, []);
+
+  const handleSubmit = async () => {
+    if (saving) return;
+    
+    setSaving(true);
+    try {
+      const userDataStr = localStorage.getItem('examUserData');
+      const userData = userDataStr ? JSON.parse(userDataStr) : {};
+      const examId = localStorage.getItem('currentExamId');
+      const examType = localStorage.getItem('examType');
+      
+      const totalAnswered = Object.keys(selectedAnswers).length;
+      const totalCorrect = sectionStats.reduce((sum, stat) => sum + stat.correct, 0);
+      const totalIncorrect = sectionStats.reduce((sum, stat) => sum + stat.incorrect, 0);
+      const totalScore = totalCorrect;
+      const totalQuestions = sectionStats.reduce((sum, stat) => sum + stat.totalQuestions, 0);
+      const percentage = totalQuestions > 0 ? Math.round((totalScore / totalQuestions) * 100) : 0;
+      
+      // Save result to database
+      const resultData = {
+        userId: userData.mobile || 'anonymous',
+        examId: examId,
+        examTitle: examData?.title || 'Exam',
+        examType: examType || 'CUSTOM',
+        userName: userName,
+        userMobile: userData.mobile,
+        userCity: userData.city,
+        answers: selectedAnswers,
+        sectionStats: sectionStats,
+        totalQuestions: totalQuestions,
+        totalAnswered: totalAnswered,
+        totalCorrect: totalCorrect,
+        totalIncorrect: totalIncorrect,
+        totalScore: totalScore,
+        percentage: percentage,
+        timeTaken: 0 // You can calculate this from start time
+      };
+      
+      const res = await fetch('/api/results', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(resultData)
+      });
+      
+      if (res.ok) {
+        // Store result ID for profile page
+        const result = await res.json();
+        localStorage.setItem('lastResultId', result.result._id);
+        
+        // Redirect to break page or show success
+        window.location.href = "/exam/break";
+      } else {
+        alert('Error saving result. Please try again.');
+      }
+    } catch (error) {
+      console.error('Error submitting result:', error);
+      alert('Error submitting result. Please try again.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleDownloadPDF = () => {
+    const pdf = new jsPDF();
+    const pageWidth = pdf.internal.pageSize.getWidth();
+    const pageHeight = pdf.internal.pageSize.getHeight();
+    
+    // Header
+    pdf.setFillColor(41, 12, 82);
+    pdf.rect(0, 0, pageWidth, 20, 'F');
+    pdf.setTextColor(255, 255, 255);
+    pdf.setFontSize(18);
+    pdf.text('MPCPCT 2025', pageWidth / 2, 12, { align: 'center' });
+    
+    // User Info
+    pdf.setTextColor(0, 0, 0);
+    pdf.setFontSize(14);
+    let yPos = 30;
+    pdf.text(`Name: ${userName}`, 10, yPos);
+    yPos += 10;
+    if (examData) {
+      pdf.text(`Exam: ${examData.title}`, 10, yPos);
+      yPos += 10;
+    }
+    pdf.text(`Date: ${new Date().toLocaleDateString()}`, 10, yPos);
+    yPos += 15;
+    
+    // Section Statistics Table
+    pdf.setFontSize(12);
+    pdf.text('Exam Summary', pageWidth / 2, yPos, { align: 'center' });
+    yPos += 10;
+    
+    // Table headers
+    const headers = ['Section', 'Total', 'Answered', 'Not Ans', 'Correct', 'Score'];
+    const colWidths = [60, 20, 25, 25, 25, 25];
+    let xPos = 10;
+    
+    pdf.setFontSize(10);
+    headers.forEach((header, i) => {
+      pdf.rect(xPos, yPos, colWidths[i], 8);
+      pdf.text(header, xPos + colWidths[i] / 2, yPos + 5, { align: 'center' });
+      xPos += colWidths[i];
+    });
+    yPos += 8;
+    
+    // Table rows
+    sectionStats.forEach(stat => {
+      if (yPos > pageHeight - 30) {
+        pdf.addPage();
+        yPos = 20;
+      }
+      xPos = 10;
+      const rowData = [
+        stat.sectionName.substring(0, 20),
+        stat.totalQuestions.toString(),
+        stat.answered.toString(),
+        stat.notAnswered.toString(),
+        stat.correct.toString(),
+        stat.score.toString()
+      ];
+      rowData.forEach((data, i) => {
+        pdf.rect(xPos, yPos, colWidths[i], 8);
+        pdf.text(data, xPos + colWidths[i] / 2, yPos + 5, { align: 'center' });
+        xPos += colWidths[i];
+      });
+      yPos += 8;
+    });
+    
+    // Total
+    yPos += 5;
+    const totalCorrect = sectionStats.reduce((sum, s) => sum + s.correct, 0);
+    const totalQuestions = sectionStats.reduce((sum, s) => sum + s.totalQuestions, 0);
+    pdf.setFontSize(12);
+    pdf.text(`Total Score: ${totalCorrect} / ${totalQuestions}`, pageWidth / 2, yPos, { align: 'center' });
+    yPos += 10;
+    pdf.text(`Percentage: ${totalQuestions > 0 ? Math.round((totalCorrect / totalQuestions) * 100) : 0}%`, pageWidth / 2, yPos, { align: 'center' });
+    
+    // Save PDF
+    pdf.save(`exam-result-${userName}-${Date.now()}.pdf`);
+  };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-white flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-500 mx-auto"></div>
+          <p className="mt-4 text-gray-600">Loading results...</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-white text-sm">
       {/* Header */}
       <div className="bg-[#290c52] text-yellow-400 p-2 text-lg font-bold">
-        CPCTMASTER 2025
+        MPCPCT 2025
       </div>
 
       {/* Title */}
-      
       <div className="text-center font-semibold py-4 text-gray-800 text-base border-b border-gray-300">
         <img
           src="/lo.jpg"
           alt="avatar"
           className="w-20 h-20 rounded-full mx-auto"
         />
-        <p className="mt-2">Anas</p>
+        <p className="mt-2">{userName}</p>
       </div>
 
-     
-<h1 className="text-center text-2xl font-semibold my-5">Exam Summary</h1>
+      <h1 className="text-center text-2xl font-semibold my-5">Exam Summary</h1>
+      
+      {/* Download PDF Button */}
+      <div className="text-center mb-4">
+        <button
+          onClick={handleDownloadPDF}
+          className="bg-blue-500 hover:bg-blue-600 text-white px-6 py-2 rounded-lg font-semibold"
+        >
+          Download PDF
+        </button>
+      </div>
+
       {/* CPCT Actual Summary */}
       <div className="px-4">
         <p className="font-semibold mb-2 text-gray-800">
-          CPCT Actual : <span className="text-gray-600">( Current Section )</span>
+          {examData?.title || 'Exam'} : <span className="text-gray-600">( Current Section )</span>
         </p>
 
         <div className="overflow-x-auto border border-gray-300">
@@ -40,31 +345,46 @@ export default function ExamSummary() {
                   Answered & Marked for Review<br />(will not be considered for evaluation)
                 </th>
                 <th className="border p-2">Not Visited</th>
+                <th className="border p-2">Correct</th>
+                <th className="border p-2">Score</th>
               </tr>
             </thead>
             <tbody>
-              {[
-                ["General IT Skills & Networking", 52, 0, 1, 0, 0, 51],
-                ["Reading Comprehension", 5, 0, 0, 0, 0, 5],
-                ["Aptitude", 6, 0, 0, 0, 0, 6],
-                ["Reasoning", 6, 0, 0, 0, 0, 6],
-                ["General Awareness", 6, 0, 0, 0, 0, 6],
-              ].map(([name, total, ans, notAns, mark, markAns, notVisit], idx) => (
-                <tr key={idx}>
-                  <td className="border p-2 text-left">{name}</td>
-                  <td className="border p-2">{total}</td>
-                  <td className="border p-2">{ans}</td>
-                  <td className="border p-2">{notAns}</td>
-                  <td className="border p-2">{mark}</td>
-                  <td className="border p-2">{markAns}</td>
-                  <td className="border p-2">{notVisit}</td>
+              {sectionStats.length > 0 ? (
+                sectionStats.map((stat, idx) => (
+                  <tr key={idx}>
+                    <td className="border p-2 text-left">{stat.sectionName}</td>
+                    <td className="border p-2">{stat.totalQuestions}</td>
+                    <td className="border p-2">{stat.answered}</td>
+                    <td className="border p-2">{stat.notAnswered}</td>
+                    <td className="border p-2">{stat.markedForReview}</td>
+                    <td className="border p-2">{stat.answeredAndMarked}</td>
+                    <td className="border p-2">{stat.notVisited}</td>
+                    <td className="border p-2 text-green-600 font-semibold">{stat.correct}</td>
+                    <td className="border p-2 font-semibold">{stat.score}</td>
+                  </tr>
+                ))
+              ) : (
+                <tr>
+                  <td colSpan="9" className="border p-4 text-gray-500">No data available</td>
                 </tr>
-              ))}
+              )}
+              {sectionStats.length > 0 && (
+                <tr className="bg-gray-100 font-bold">
+                  <td className="border p-2 text-left">Total</td>
+                  <td className="border p-2">{sectionStats.reduce((sum, s) => sum + s.totalQuestions, 0)}</td>
+                  <td className="border p-2">{sectionStats.reduce((sum, s) => sum + s.answered, 0)}</td>
+                  <td className="border p-2">{sectionStats.reduce((sum, s) => sum + s.notAnswered, 0)}</td>
+                  <td className="border p-2">{sectionStats.reduce((sum, s) => sum + s.markedForReview, 0)}</td>
+                  <td className="border p-2">{sectionStats.reduce((sum, s) => sum + s.answeredAndMarked, 0)}</td>
+                  <td className="border p-2">{sectionStats.reduce((sum, s) => sum + s.notVisited, 0)}</td>
+                  <td className="border p-2 text-green-600">{sectionStats.reduce((sum, s) => sum + s.correct, 0)}</td>
+                  <td className="border p-2">{sectionStats.reduce((sum, s) => sum + s.score, 0)}</td>
+                </tr>
+              )}
             </tbody>
           </table>
         </div>
-
-      
       </div>
 
       {/* Confirmation Message */}
@@ -77,11 +397,15 @@ export default function ExamSummary() {
         </p>
 
         <div className="mt-4 flex justify-center gap-4">
-          <button className="bg-green-500 hover:bg-gray-300 text-black px-4 py-2 rounded">
-          <a href="/exam/break">  Yes </a>
+          <button 
+            onClick={handleSubmit}
+            disabled={saving}
+            className="bg-green-500 hover:bg-green-600 text-white px-6 py-2 rounded disabled:opacity-50"
+          >
+            {saving ? 'Submitting...' : 'Yes'}
           </button>
-          <button className="bg-red-500 hover:bg-gray-300 text-black px-4 py-2 rounded">
-          <a href="/exam_mode">  No </a>
+          <button className="bg-red-500 hover:bg-red-600 text-white px-6 py-2 rounded">
+            <a href="/exam_mode">No</a>
           </button>
         </div>
       </div>

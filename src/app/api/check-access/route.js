@@ -2,21 +2,26 @@ import { NextResponse } from "next/server";
 import dbConnect from "@/lib/db";
 import Subscription from "@/lib/models/Subscription";
 import User from "@/lib/models/User";
-import { verifyJWT } from "@/lib/auth";
+import { jwtVerify } from "jose";
+
+const JWT_SECRET = process.env.JWT_SECRET || "secret123";
 
 export async function POST(request) {
   try {
-    const token = request.headers.get("authorization")?.replace("Bearer ", "");
+    const token = request.cookies.get("token")?.value;
     if (!token) {
-      return NextResponse.json({ hasAccess: false, reason: "no_token" }, { status: 401 });
+      return NextResponse.json({ hasAccess: false, reason: "no_token", redirectTo: "/signup" }, { status: 401 });
     }
 
-    const decoded = await verifyJWT(token);
-    if (!decoded) {
-      return NextResponse.json({ hasAccess: false, reason: "invalid_token" }, { status: 401 });
+    let decoded;
+    try {
+      const { payload } = await jwtVerify(token, new TextEncoder().encode(JWT_SECRET));
+      decoded = payload;
+    } catch (err) {
+      return NextResponse.json({ hasAccess: false, reason: "invalid_token", redirectTo: "/signup" }, { status: 401 });
     }
 
-    const { type, examType } = await request.json();
+    const { type, examType, isFree, itemId } = await request.json();
 
     await dbConnect();
     
@@ -26,13 +31,29 @@ export async function POST(request) {
       return NextResponse.json({ hasAccess: true, reason: "admin" });
     }
 
+    // Check if content is marked as free
+    if (isFree === true) {
+      return NextResponse.json({ hasAccess: true, reason: "free" });
+    }
+
     // Check if user has active subscription
-    const subscription = await Subscription.findOne({
+    // First check for "all" type subscription (unified subscription)
+    let subscription = await Subscription.findOne({
       userId: decoded.userId,
-      type,
+      type: "all",
       status: "active",
       endDate: { $gt: new Date() }
     });
+
+    // If no unified subscription, check for specific type subscription
+    if (!subscription) {
+      subscription = await Subscription.findOne({
+        userId: decoded.userId,
+        type,
+        status: "active",
+        endDate: { $gt: new Date() }
+      });
+    }
 
     if (subscription) {
       return NextResponse.json({ 
@@ -40,17 +61,18 @@ export async function POST(request) {
         reason: "subscription",
         subscription: {
           plan: subscription.plan,
-          endDate: subscription.endDate
+          endDate: subscription.endDate,
+          type: subscription.type
         }
       });
     }
 
-    // Check if this is free content (first item in each category)
-    // For now, we'll consider all content as paid if no subscription
-    const hasAccess = false;
-    const reason = "no_subscription";
-
-    return NextResponse.json({ hasAccess, reason });
+    // No subscription and not free - redirect to payment
+    return NextResponse.json({ 
+      hasAccess: false, 
+      reason: "no_subscription",
+      redirectTo: `/payment-app?type=${type}&itemId=${itemId || ''}`
+    });
   } catch (error) {
     console.error("Access check error:", error);
     return NextResponse.json({ hasAccess: false, reason: "error" }, { status: 500 });

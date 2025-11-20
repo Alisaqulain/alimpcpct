@@ -1,8 +1,15 @@
 "use client";
-import React, { useState, useEffect, useCallback, useRef } from "react";
+import React, { useState, useEffect, useCallback, useRef, Suspense } from "react";
+import { useSearchParams } from "next/navigation";
 import { Sun, Moon } from "lucide-react";
+import { getLearningData, getLessonContent } from "@/lib/learningData";
 
-export default function App() {
+function KeyboardApp() {
+  const searchParams = useSearchParams();
+  const lessonId = searchParams.get("lesson");
+  const language = searchParams.get("language") || "english";
+  const subLanguage = searchParams.get("subLanguage") || "";
+
   const [hand, setHand] = useState(true);
   const [sound, setSound] = useState(true);
   const [keyboard, setKeyboard] = useState(true);
@@ -18,13 +25,185 @@ export default function App() {
   const [leftHandImage, setLeftHandImage] = useState("/images/left-resting-hand.webp");
   const [rightHandImage, setRightHandImage] = useState("/images/right-resting-hand.webp");
   const inputRef = useRef(null);
+  const [loading, setLoading] = useState(false);
+  const [lessonContent, setLessonContent] = useState("");
+  const [isCompleted, setIsCompleted] = useState(false);
+  const [startTime, setStartTime] = useState(null);
+  const [endTime, setEndTime] = useState(null);
+  const [userName, setUserName] = useState("User");
+  const [userProfileUrl, setUserProfileUrl] = useState("/lo.jpg");
 
-  const highlightedKeys = ["A", "S", "D", "F", "Space", "J", "K", "L", ";", "Space"];
-  const [keyStatus, setKeyStatus] = useState(Array(highlightedKeys.length).fill(null));
+  // Default home row keys if no lesson
+  const defaultKeys = ["A", "S", "D", "F", "Space", "J", "K", "L", ";", "Space"];
+  const [highlightedKeys, setHighlightedKeys] = useState(defaultKeys);
+  const [keyStatus, setKeyStatus] = useState(Array(defaultKeys.length).fill(null));
 
-  const correctCount = currentIndex;
+  // Fetch lesson content and extract keys
+  useEffect(() => {
+    const fetchLessonData = async () => {
+      if (!lessonId) {
+        // Use default home row keys
+        setHighlightedKeys(defaultKeys);
+        setKeyStatus(Array(defaultKeys.length).fill(null));
+        return;
+      }
+
+      setLoading(true);
+      try {
+        // Fetch learning data
+        const res = await fetch('/api/learning?' + new Date().getTime());
+        if (res.ok) {
+          const data = await res.json();
+          // Find the lesson
+          let lesson = null;
+          for (const section of data.sections || []) {
+            const foundLesson = section.lessons?.find(l => l.id === lessonId);
+            if (foundLesson) {
+              lesson = { ...foundLesson, section: section.name };
+              break;
+            }
+          }
+
+          if (lesson) {
+            // Get content based on language - directly from lesson.content object
+            const languageKey = language.toLowerCase();
+            let contentKey = 'english';
+            
+            if (languageKey === 'hindi') {
+              if (subLanguage.toLowerCase().includes("ramington")) {
+                contentKey = 'hindi_ramington';
+              } else if (subLanguage.toLowerCase().includes("inscript")) {
+                contentKey = 'hindi_inscript';
+              } else {
+                contentKey = 'hindi_ramington'; // default for hindi
+              }
+            }
+            
+            // Get content directly from lesson.content object (database structure)
+            const content = lesson.content?.[contentKey] || lesson.content?.english || "";
+            setLessonContent(content);
+
+            // Extract unique characters/keys from content (first 100 characters for practice)
+            if (content) {
+              const contentToUse = content.substring(0, 100).trim();
+              // Convert content to array of characters, handling spaces
+              const keys = [];
+              for (let i = 0; i < contentToUse.length; i++) {
+                const char = contentToUse[i];
+                if (char === ' ') {
+                  keys.push("Space");
+                } else if (languageKey === 'hindi') {
+                  // For Hindi, include all Unicode characters (Hindi, Devanagari, etc.)
+                  // Also include English characters and common punctuation
+                  if (char.match(/[\u0900-\u097F\u0020-\u007E\u00A0-\u00FF]/)) {
+                    // For Hindi keyboard, we need to map to actual keyboard keys
+                    // For now, we'll use the character as-is for display
+                    // But for keyboard practice, we might need to map to actual keys
+                    // For simplicity, let's extract first 20-30 unique characters
+                    keys.push(char);
+                  }
+                } else {
+                  // For English, use standard regex
+                  if (char.match(/[a-zA-Z0-9;:'",.?!\-=\[\]\\`~@#$%^&*()_+|<>?/{}]/)) {
+                    keys.push(char.toUpperCase());
+                  }
+                }
+              }
+              // Limit to reasonable number of keys (20-30 for Hindi, 50 for English)
+              const maxKeys = languageKey === 'hindi' ? 30 : 50;
+              const keysToUse = keys.length > 0 ? keys.slice(0, maxKeys) : defaultKeys;
+              setHighlightedKeys(keysToUse);
+              setKeyStatus(Array(keysToUse.length).fill(null));
+            } else {
+              setHighlightedKeys(defaultKeys);
+              setKeyStatus(Array(defaultKeys.length).fill(null));
+            }
+          } else {
+            // Fallback to local data
+            const localData = getLearningData();
+            for (const section of localData.sections || []) {
+              const foundLesson = section.lessons?.find(l => l.id === lessonId);
+              if (foundLesson) {
+                const languageKey = language.toLowerCase();
+                let contentKey = 'english';
+                
+                if (languageKey === 'hindi') {
+                  if (subLanguage.toLowerCase().includes("ramington")) {
+                    contentKey = 'hindi_ramington';
+                  } else if (subLanguage.toLowerCase().includes("inscript")) {
+                    contentKey = 'hindi_inscript';
+                  } else {
+                    contentKey = 'hindi_ramington';
+                  }
+                }
+                
+                const content = foundLesson.content?.[contentKey] || foundLesson.content?.english || "";
+                if (content) {
+                  const contentToUse = content.substring(0, 100).trim();
+                  const keys = [];
+                  for (let i = 0; i < contentToUse.length; i++) {
+                    const char = contentToUse[i];
+                    if (char === ' ') {
+                      keys.push("Space");
+                    } else if (languageKey === 'hindi') {
+                      if (char.match(/[\u0900-\u097F\u0020-\u007E\u00A0-\u00FF]/)) {
+                        keys.push(char);
+                      }
+                    } else {
+                      if (char.match(/[a-zA-Z0-9;:'",.?!\-=\[\]\\`~@#$%^&*()_+|<>?/{}]/)) {
+                        keys.push(char.toUpperCase());
+                      }
+                    }
+                  }
+                  const maxKeys = languageKey === 'hindi' ? 30 : 50;
+                  const keysToUse = keys.length > 0 ? keys.slice(0, maxKeys) : defaultKeys;
+                  setHighlightedKeys(keysToUse);
+                  setKeyStatus(Array(keysToUse.length).fill(null));
+                  setLessonContent(content);
+                  break;
+                }
+              }
+            }
+          }
+        }
+      } catch (error) {
+        console.error('Failed to fetch lesson data:', error);
+        // Use default keys on error
+        setHighlightedKeys(defaultKeys);
+        setKeyStatus(Array(defaultKeys.length).fill(null));
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchLessonData();
+  }, [lessonId, language, subLanguage]);
+
+  // Fetch user profile
+  useEffect(() => {
+    const fetchUserProfile = async () => {
+      try {
+        const res = await fetch('/api/profile');
+        if (res.ok) {
+          const data = await res.json();
+          if (data.user) {
+            setUserName(data.user.name || "User");
+            setUserProfileUrl(data.user.profileUrl || "/lo.jpg");
+          }
+        }
+      } catch (error) {
+        console.error('Failed to fetch user profile:', error);
+        // Keep default values
+      }
+    };
+    fetchUserProfile();
+  }, []);
+
+  // Calculate stats - correctCount should be the number of correctly typed keys
+  const correctCount = isCompleted ? highlightedKeys.length : currentIndex;
   const wrongCount = keyStatus.filter(status => status === "wrong").length;
   const totalCount = highlightedKeys.length;
+  const totalAttempts = correctCount + wrongCount;
 
   const wpm = elapsedTime > 0 ? Math.round((correctCount / elapsedTime) * 60) : 0;
 
@@ -319,8 +498,22 @@ export default function App() {
       const newKeyStatus = [...keyStatus];
       newKeyStatus[currentIndex] = isCorrect ? 'correct' : 'wrong';
       setKeyStatus(newKeyStatus);
+      
+      // Set start time on first key press
+      if (!startTime && currentIndex === 0) {
+        setStartTime(Date.now());
+      }
+      
       if (isCorrect) {
-        setCurrentIndex(prev => prev + 1);
+        setCurrentIndex(prev => {
+          const nextIndex = prev + 1;
+          // Check if completed
+          if (nextIndex >= highlightedKeys.length) {
+            setIsCompleted(true);
+            setEndTime(Date.now());
+          }
+          return nextIndex;
+        });
       }
       const totalAttempts = currentIndex + (isCorrect ? 1 : 0) + wrongCount;
       const newAccuracy = Math.round(((currentIndex + (isCorrect ? 1 : 0)) / totalAttempts) * 100);
@@ -360,12 +553,49 @@ export default function App() {
     setElapsedTime(0);
     setBackspaceCount(0);
     setPressedKey("");
+    setIsCompleted(false);
+    setStartTime(null);
+    setEndTime(null);
     setLeftHandImage(keyToHandImage["resting"].left);
     setRightHandImage(keyToHandImage["resting"].right);
     if (isMobile && inputRef.current) {
       inputRef.current.focus();
     }
   };
+
+  // Calculate final stats for completion modal
+  // Use actual time taken from start to end, or fallback to elapsedTime
+  const timeTaken = startTime && endTime ? (endTime - startTime) / 1000 : (elapsedTime > 0 ? elapsedTime : 1);
+  
+  // When completed, correctCount should equal totalCount
+  const finalCorrectCount = isCompleted ? totalCount : correctCount;
+  
+  // WPM calculation: (correct keys / time in minutes)
+  // For keyboard practice, we calculate based on keys typed correctly
+  const finalWpm = timeTaken > 0 ? Math.round((finalCorrectCount / timeTaken) * 60) : 0;
+  
+  // Accuracy: percentage of correct keys out of total keys
+  const finalAccuracy = totalCount > 0 ? Math.round((finalCorrectCount / totalCount) * 100) : 100;
+  
+  // Display correct count (should match totalCount when completed)
+  const displayCorrectCount = isCompleted ? totalCount : correctCount;
+
+  // Check for completion - separate effect to ensure it triggers
+  useEffect(() => {
+    if (currentIndex >= highlightedKeys.length && highlightedKeys.length > 0 && !isCompleted) {
+      if (!startTime) {
+        setStartTime(Date.now());
+      }
+      setIsCompleted(true);
+      setEndTime(Date.now());
+    }
+  }, [currentIndex, highlightedKeys.length, isCompleted, startTime]);
+
+  // Update keyStatus when highlightedKeys changes
+  useEffect(() => {
+    setKeyStatus(Array(highlightedKeys.length).fill(null));
+    setCurrentIndex(0);
+  }, [highlightedKeys]);
 
   const formatClock = (seconds) => {
     const m = Math.floor(seconds / 60).toString().padStart(2, "0");
@@ -589,15 +819,61 @@ export default function App() {
         )}
       </div>
 
+      {/* Completion Result Modal */}
+      {isCompleted && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className={`bg-white rounded-lg p-6 md:p-8 max-w-md w-full mx-4 ${isDarkMode ? 'bg-gray-800 text-white' : 'bg-white text-black'}`}>
+            <h2 className="text-2xl md:text-3xl font-bold text-center mb-6 text-green-600">
+              🎉 Practice Completed!
+            </h2>
+            <div className="grid grid-cols-2 gap-4 mb-6">
+              <div className="text-center p-4 bg-green-50 rounded-lg">
+                <div className="text-3xl font-bold text-green-600">{finalWpm}</div>
+                <div className="text-sm text-gray-600 mt-1">WPM</div>
+              </div>
+              <div className="text-center p-4 bg-blue-50 rounded-lg">
+                <div className="text-3xl font-bold text-blue-600">{finalAccuracy}%</div>
+                <div className="text-sm text-gray-600 mt-1">Accuracy</div>
+              </div>
+              <div className="text-center p-4 bg-purple-50 rounded-lg">
+                <div className="text-3xl font-bold text-purple-600">{Math.round(timeTaken)}s</div>
+                <div className="text-sm text-gray-600 mt-1">Time</div>
+              </div>
+              <div className="text-center p-4 bg-orange-50 rounded-lg">
+                <div className="text-3xl font-bold text-orange-600">{displayCorrectCount}/{totalCount}</div>
+                <div className="text-sm text-gray-600 mt-1">Correct/Total</div>
+              </div>
+            </div>
+            <div className="flex gap-3">
+              <button
+                onClick={resetStats}
+                className="flex-1 bg-green-500 text-white px-6 py-3 rounded-lg hover:bg-green-600 transition-colors font-semibold"
+              >
+                Try Again
+              </button>
+              <button
+                onClick={() => window.location.href = '/learning'}
+                className="flex-1 bg-blue-500 text-white px-6 py-3 rounded-lg hover:bg-blue-600 transition-colors font-semibold"
+              >
+                Back to Lessons
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Right Section */}
       <div className="flex flex-col items-center space-y-1 mt-15 mobile-stack mobile-small-text">
         <div className="flex flex-col items-center">
           <img
-            src="/lo.jpg"
+            src={userProfileUrl}
             alt="User"
             className="w-30 h-25 rounded-md border-2 border-white mobile-scale"
+            onError={(e) => {
+              e.target.src = "/lo.jpg";
+            }}
           />
-          <p className="font-semibold text-xs md:text-sm mt-1">Anas Ansari</p>
+          <p className="font-semibold text-xs md:text-sm mt-1">{userName}</p>
         </div>
         
         <div className="w-24 h-9 rounded-lg overflow-hidden text-center mt-2 shadow-[0_1px_8px_white,0_2px_6px_silver,0_4px_10px_rgba(0,0,0,0.7)] mobile-scale">
@@ -668,4 +944,19 @@ function getFingerPosition(finger) {
     'pinky-right': 'bottom-20 right-4'
   };
   return positions[finger] || 'bottom-16 left-40';
+}
+
+export default function App() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-black to-gray-900 text-white">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto mb-4"></div>
+          <p>Loading...</p>
+        </div>
+      </div>
+    }>
+      <KeyboardApp />
+    </Suspense>
+  );
 }
