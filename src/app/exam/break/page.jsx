@@ -1,13 +1,10 @@
 "use client";
 import React, { useState, useEffect, Suspense } from "react";
-import { useSearchParams } from "next/navigation";
 
 function BreakScreenContent() {
   const [seconds, setSeconds] = useState(60);
   const [userName, setUserName] = useState("User");
   const [breakComplete, setBreakComplete] = useState(false);
-  const searchParams = useSearchParams();
-  const nextSection = searchParams.get("next") || "/exam/english-ty";
 
   // Fetch user name
   useEffect(() => {
@@ -57,21 +54,20 @@ function BreakScreenContent() {
     return () => clearInterval(timer);
   }, []);
 
-  // Auto-redirect when break completes
+  // Auto-redirect when break completes (after 1 minute)
   useEffect(() => {
     if (breakComplete && seconds === 0) {
-      // Auto-redirect after 2 seconds
+      // Auto-redirect after 1 second
       const redirectTimer = setTimeout(() => {
-        window.location.href = nextSection;
-      }, 2000);
+        window.location.href = "/exam_mode";
+      }, 1000);
       return () => clearTimeout(redirectTimer);
     }
-  }, [breakComplete, seconds, nextSection]);
+  }, [breakComplete, seconds]);
 
   const handleNextSection = () => {
-    if (breakComplete) {
-      window.location.href = nextSection;
-    }
+    // Always redirect to exam_mode, which will then load the next section from localStorage
+    window.location.href = "/exam_mode";
   };
 
   return (
@@ -103,12 +99,7 @@ function BreakScreenContent() {
 
         <button 
           onClick={handleNextSection}
-          disabled={!breakComplete}
-          className={`mt-6 px-5 py-2 rounded text-white ${
-            breakComplete 
-              ? "bg-[#290c52] cursor-pointer hover:bg-blue-700" 
-              : "bg-gray-400 cursor-not-allowed opacity-60"
-          }`}
+          className="mt-6 px-5 py-2 rounded text-white bg-[#290c52] cursor-pointer hover:bg-blue-700"
         >
           Start Next Section
         </button>

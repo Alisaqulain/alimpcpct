@@ -34,38 +34,51 @@ function KeyboardApp() {
   const [userProfileUrl, setUserProfileUrl] = useState("/lo.jpg");
   const [currentRowIndex, setCurrentRowIndex] = useState(0);
   const [isRowAnimating, setIsRowAnimating] = useState(false);
+  const [keyDifficulties, setKeyDifficulties] = useState({}); // Track wrong attempts per key
 
-  // Default home row keys if no lesson
-  const defaultKeys = ["A", "S", "D", "F", "Space", "J", "K", "L", ";", "Space"];
+  // Default home row keys if no lesson (no spaces)
+  const defaultKeys = ["A", "S", "D", "F", "J", "K", "L", ";"];
   const [highlightedKeys, setHighlightedKeys] = useState(defaultKeys);
   const [keyStatus, setKeyStatus] = useState(Array(defaultKeys.length).fill(null));
 
   // Function to organize keys into rows: 4 alphabets + 1 space + 4 alphabets + 1 space
+  // Only add spaces if there are enough keys (8+), otherwise just show keys without spaces
   const organizeKeysIntoRows = (keys) => {
     const rows = [];
     const nonSpaceKeys = keys.filter(k => k !== "Space");
     
-    // Organize into rows: 4 alphabets + space + 4 alphabets + space
-    for (let i = 0; i < nonSpaceKeys.length; i += 8) {
-      const rowKeys = [];
-      
-      // First 4 alphabets
-      for (let j = 0; j < 4 && i + j < nonSpaceKeys.length; j++) {
-        rowKeys.push(nonSpaceKeys[i + j]);
+    // If there are 8 or more keys, organize with spaces for visual separation
+    // Otherwise, just show the keys without adding extra spaces
+    if (nonSpaceKeys.length >= 8) {
+      // Organize into rows: 4 alphabets + space + 4 alphabets + space
+      for (let i = 0; i < nonSpaceKeys.length; i += 8) {
+        const rowKeys = [];
+        
+        // First 4 alphabets
+        for (let j = 0; j < 4 && i + j < nonSpaceKeys.length; j++) {
+          rowKeys.push(nonSpaceKeys[i + j]);
+        }
+        
+        // First space (only if we have keys after)
+        if (i + 4 < nonSpaceKeys.length) {
+          rowKeys.push("Space");
+        }
+        
+        // Next 4 alphabets
+        for (let j = 4; j < 8 && i + j < nonSpaceKeys.length; j++) {
+          rowKeys.push(nonSpaceKeys[i + j]);
+        }
+        
+        // Second space (only if we have more keys after this row)
+        if (i + 8 < nonSpaceKeys.length) {
+          rowKeys.push("Space");
+        }
+        
+        rows.push(rowKeys);
       }
-      
-      // First space
-      rowKeys.push("Space");
-      
-      // Next 4 alphabets
-      for (let j = 4; j < 8 && i + j < nonSpaceKeys.length; j++) {
-        rowKeys.push(nonSpaceKeys[i + j]);
-      }
-      
-      // Second space
-      rowKeys.push("Space");
-      
-      rows.push(rowKeys);
+    } else {
+      // For fewer than 8 keys, just show them without adding spaces
+      rows.push(nonSpaceKeys);
     }
     
     return rows;
@@ -157,10 +170,12 @@ function KeyboardApp() {
             if (content) {
               const contentToUse = content.substring(0, 100).trim();
               // Convert content to array of characters, handling spaces
+              // Only include spaces if they're actually in the content, don't add them automatically
               const keys = [];
               for (let i = 0; i < contentToUse.length; i++) {
                 const char = contentToUse[i];
                 if (char === ' ') {
+                  // Only add space if it's actually in the content
                   keys.push("Space");
                 } else if (languageKey === 'hindi') {
                   // For Hindi, include all Unicode characters (Hindi, Devanagari, etc.)
@@ -173,15 +188,18 @@ function KeyboardApp() {
                     keys.push(char);
                   }
                 } else {
-                  // For English, use standard regex
+                  // For English, use standard regex - only include actual characters, no automatic spaces
                   if (char.match(/[a-zA-Z0-9;:'",.?!\-=\[\]\\`~@#$%^&*()_+|<>?/{}]/)) {
                     keys.push(char.toUpperCase());
                   }
                 }
               }
+              // Filter out spaces - only keep actual character keys
+              // This prevents extra spaces from being added when admin only adds characters like "asd"
+              const filteredKeys = keys.filter(key => key !== "Space");
               // Limit to reasonable number of keys (20-30 for Hindi, 50 for English)
               const maxKeys = languageKey === 'hindi' ? 30 : 50;
-              const keysToUse = keys.length > 0 ? keys.slice(0, maxKeys) : defaultKeys;
+              const keysToUse = filteredKeys.length > 0 ? filteredKeys.slice(0, maxKeys) : defaultKeys;
               setHighlightedKeys(keysToUse);
               setKeyStatus(Array(keysToUse.length).fill(null));
             } else {
@@ -225,8 +243,10 @@ function KeyboardApp() {
                       }
                     }
                   }
+                  // Filter out spaces - only keep actual character keys
+                  const filteredKeys = keys.filter(key => key !== "Space");
                   const maxKeys = languageKey === 'hindi' ? 30 : 50;
-                  const keysToUse = keys.length > 0 ? keys.slice(0, maxKeys) : defaultKeys;
+                  const keysToUse = filteredKeys.length > 0 ? filteredKeys.slice(0, maxKeys) : defaultKeys;
                   setHighlightedKeys(keysToUse);
                   setKeyStatus(Array(keysToUse.length).fill(null));
                   setLessonContent(content);
@@ -569,6 +589,14 @@ function KeyboardApp() {
       newKeyStatus[currentIndex] = isCorrect ? 'correct' : 'wrong';
       setKeyStatus(newKeyStatus);
       
+      // Track key difficulties (wrong attempts)
+      if (!isCorrect && expectedKey) {
+        setKeyDifficulties(prev => ({
+          ...prev,
+          [expectedKey]: (prev[expectedKey] || 0) + 1
+        }));
+      }
+      
       // Set start time on first key press
       if (!startTime && currentIndex === 0) {
         setStartTime(Date.now());
@@ -628,6 +656,7 @@ function KeyboardApp() {
     setIsCompleted(false);
     setStartTime(null);
     setEndTime(null);
+    setKeyDifficulties({});
     setLeftHandImage(keyToHandImage["resting"].left);
     setRightHandImage(keyToHandImage["resting"].right);
     if (isMobile && inputRef.current) {
@@ -649,8 +678,41 @@ function KeyboardApp() {
   // Accuracy: percentage of correct keys out of total keys
   const finalAccuracy = totalCount > 0 ? Math.round((finalCorrectCount / totalCount) * 100) : 100;
   
+  // Net Speed: Gross speed adjusted for accuracy
+  const netSpeed = Math.round(finalWpm * (finalAccuracy / 100));
+  
   // Display correct count (should match totalCount when completed)
   const displayCorrectCount = isCompleted ? totalCount : correctCount;
+  
+  // Format time in minutes (e.g., "2:26 min.")
+  const formatTimeInMinutes = (seconds) => {
+    const minutes = Math.floor(seconds / 60);
+    const secs = Math.floor(seconds % 60);
+    return `${minutes}:${secs.toString().padStart(2, "0")} min.`;
+  };
+  
+  // Get all keys used in exercise with their difficulty levels
+  const getDifficultKeys = () => {
+    // Get all unique keys from highlightedKeys (excluding Space for cleaner display)
+    const uniqueKeys = [...new Set(highlightedKeys.filter(k => k !== "Space"))];
+    
+    // Map to difficulty data
+    const keysWithDifficulty = uniqueKeys.map(key => ({
+      key,
+      difficulty: keyDifficulties[key] || 0
+    }));
+    
+    // Sort by difficulty (most difficult first), show up to 15 keys
+    return keysWithDifficulty
+      .sort((a, b) => b.difficulty - a.difficulty)
+      .slice(0, 15);
+  };
+  
+  // Calculate difficulty level for a key (0-100)
+  const getKeyDifficultyLevel = (difficulty, maxDifficulty) => {
+    if (maxDifficulty === 0) return 0;
+    return Math.min(100, (difficulty / maxDifficulty) * 100);
+  };
 
   // Check for completion - separate effect to ensure it triggers
   useEffect(() => {
@@ -662,6 +724,85 @@ function KeyboardApp() {
       setEndTime(Date.now());
     }
   }, [currentIndex, highlightedKeys.length, isCompleted, startTime]);
+
+  // Save result data to localStorage when completed and redirect
+  useEffect(() => {
+    const saveAndRedirect = async () => {
+      if (isCompleted && startTime && endTime) {
+        const timeTaken = (endTime - startTime) / 1000;
+        const finalCorrectCount = totalCount;
+        const finalWpm = timeTaken > 0 ? Math.round((finalCorrectCount / timeTaken) * 60) : 0;
+        const finalAccuracy = totalCount > 0 ? Math.round((finalCorrectCount / totalCount) * 100) : 100;
+        const netSpeed = Math.round(finalWpm * (finalAccuracy / 100));
+        
+        // Get difficult keys data
+        const uniqueKeys = [...new Set(highlightedKeys.filter(k => k !== "Space"))];
+        const difficultKeysData = uniqueKeys.map(key => ({
+          key,
+          difficulty: keyDifficulties[key] || 0
+        })).sort((a, b) => b.difficulty - a.difficulty).slice(0, 15);
+        
+        // Get user name and exercise info
+        const userDataStr = localStorage.getItem('examUserData');
+        const userData = userDataStr ? JSON.parse(userDataStr) : {};
+        
+        // Get exercise/lesson name
+        let exerciseName = "";
+        if (lessonId) {
+          try {
+            const res = await fetch('/api/learning?' + new Date().getTime());
+            if (res.ok) {
+              const data = await res.json();
+              for (const section of data.sections || []) {
+                const foundLesson = section.lessons?.find(l => l.id === lessonId);
+                if (foundLesson) {
+                  exerciseName = foundLesson.name || foundLesson.title || "";
+                  break;
+                }
+              }
+            }
+          } catch (error) {
+            console.error('Error fetching lesson name:', error);
+          }
+        }
+        
+        // Get current date and time
+        const now = new Date();
+        const resultDate = now.toLocaleDateString('en-GB', { 
+          day: '2-digit', 
+          month: 'long', 
+          year: 'numeric' 
+        });
+        const resultTime = now.toLocaleTimeString('en-GB', { 
+          hour: '2-digit', 
+          minute: '2-digit' 
+        });
+        
+        // Save to localStorage for learning result page
+        const resultData = {
+          timeUsed: Math.round(timeTaken),
+          grossSpeed: finalWpm,
+          accuracy: finalAccuracy,
+          netSpeed: netSpeed,
+          difficultKeys: difficultKeysData,
+          userName: userName || userData.name || "User",
+          exerciseName: exerciseName,
+          language: language === "hindi" ? "Hindi" : "English",
+          subLanguage: subLanguage || "",
+          resultDate: resultDate,
+          resultTime: resultTime,
+          timeDuration: Math.round(timeTaken) // Save in seconds
+        };
+        
+        localStorage.setItem('learningResult', JSON.stringify(resultData));
+        
+        // Auto-redirect to learning result page immediately
+        window.location.href = '/result/learning-re';
+      }
+    };
+    
+    saveAndRedirect();
+  }, [isCompleted, startTime, endTime, totalCount, highlightedKeys, keyDifficulties, lessonId, language, subLanguage, userName]);
 
   // Update keyStatus when highlightedKeys changes
   useEffect(() => {
@@ -1126,48 +1267,6 @@ function KeyboardApp() {
         )}
       </div>
 
-      {/* Completion Result Modal */}
-      {isCompleted && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className={`bg-white rounded-lg p-6 md:p-8 max-w-md w-full mx-4 ${isDarkMode ? 'bg-gray-800 text-white' : 'bg-white text-black'}`}>
-            <h2 className="text-2xl md:text-3xl font-bold text-center mb-6 text-green-600">
-              🎉 Practice Completed!
-            </h2>
-            <div className="grid grid-cols-2 gap-4 mb-6">
-              <div className="text-center p-4 bg-green-50 rounded-lg">
-                <div className="text-3xl font-bold text-green-600">{finalWpm}</div>
-                <div className="text-sm text-gray-600 mt-1">WPM</div>
-              </div>
-              <div className="text-center p-4 bg-blue-50 rounded-lg">
-                <div className="text-3xl font-bold text-blue-600">{finalAccuracy}%</div>
-                <div className="text-sm text-gray-600 mt-1">Accuracy</div>
-              </div>
-              <div className="text-center p-4 bg-purple-50 rounded-lg">
-                <div className="text-3xl font-bold text-purple-600">{Math.round(timeTaken)}s</div>
-                <div className="text-sm text-gray-600 mt-1">Time</div>
-              </div>
-              <div className="text-center p-4 bg-orange-50 rounded-lg">
-                <div className="text-3xl font-bold text-orange-600">{displayCorrectCount}/{totalCount}</div>
-                <div className="text-sm text-gray-600 mt-1">Correct/Total</div>
-              </div>
-            </div>
-            <div className="flex gap-3">
-              <button
-                onClick={resetStats}
-                className="flex-1 bg-green-500 text-white px-6 py-3 rounded-lg hover:bg-green-600 transition-colors font-semibold"
-              >
-                Try Again
-              </button>
-              <button
-                onClick={() => window.location.href = '/learning'}
-                className="flex-1 bg-blue-500 text-white px-6 py-3 rounded-lg hover:bg-blue-600 transition-colors font-semibold"
-              >
-                Back to Lessons
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Right Section */}
       <div className="flex flex-col items-center space-y-1 mt-15 mobile-stack mobile-small-text">

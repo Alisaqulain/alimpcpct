@@ -30,6 +30,16 @@ function StartTestPageContent() {
     setErrors(newErrors);
 
     if (Object.keys(newErrors).length === 0) {
+      // Clear previous exam data when starting a new exam
+      localStorage.removeItem('completedSections');
+      localStorage.removeItem('examAnswers');
+      localStorage.removeItem('visitedQuestions');
+      localStorage.removeItem('markedForReview');
+      localStorage.removeItem('nextSection');
+      
+      // Set exam start timestamp
+      localStorage.setItem('examStartTime', Date.now().toString());
+      
       // Store exam data in localStorage
       if (examId) {
         localStorage.setItem('currentExamId', examId);

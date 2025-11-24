@@ -95,7 +95,17 @@ function SignupForm() {
 
   const handleInputChange = (e) => {
     const { name, value } = e.target;
-    setFormData((prev) => ({ ...prev, [name]: value }));
+    
+    // For phone number, only allow digits and limit to 10 digits
+    if (name === "phoneNumber") {
+      const digitsOnly = value.replace(/\D/g, ""); // Remove non-digits
+      if (digitsOnly.length <= 10) {
+        setFormData((prev) => ({ ...prev, [name]: digitsOnly }));
+      }
+    } else {
+      setFormData((prev) => ({ ...prev, [name]: value }));
+    }
+    
     if (fieldErrors[name]) {
       setFieldErrors((prev) => ({ ...prev, [name]: "" }));
     }
@@ -122,9 +132,21 @@ function SignupForm() {
       errs.password = "Password must be at least 6 characters.";
     }
 
-    const phoneRegex = /^[0-9]{10}$/;
-    if (formData.phoneNumber && !phoneRegex.test(formData.phoneNumber)) {
-      errs.phoneNumber = "Enter a valid 10-digit phone number.";
+    // Indian mobile number validation
+    // Must be exactly 10 digits and start with 6, 7, 8, or 9
+    const phoneRegex = /^[6-9][0-9]{9}$/;
+    if (formData.phoneNumber) {
+      if (!/^[0-9]{10}$/.test(formData.phoneNumber)) {
+        errs.phoneNumber = "Phone number must be exactly 10 digits.";
+      } else if (!phoneRegex.test(formData.phoneNumber)) {
+        errs.phoneNumber = "Enter a valid Indian mobile number (must start with 6, 7, 8, or 9).";
+      } else {
+        // Additional validation: Check if all digits are same (e.g., 1111111111, 2222222222)
+        const allSame = /^(\d)\1{9}$/.test(formData.phoneNumber);
+        if (allSame) {
+          errs.phoneNumber = "Enter a valid Indian mobile number.";
+        }
+      }
     }
 
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -244,7 +266,7 @@ function SignupForm() {
           {[
             { id: "name", label: "Full Name", type: "text" },
             { id: "email", label: "Email", type: "email" },
-            { id: "phoneNumber", label: "Phone Number", type: "tel" },
+            { id: "phoneNumber", label: "Phone Number", type: "tel", pattern: "[6-9][0-9]{9}", maxLength: 10 },
             { id: "city", label: "City", type: "text" },
           ].map((field) => (
             <div key={field.id} className="relative">
@@ -254,6 +276,8 @@ function SignupForm() {
                 name={field.id}
                 value={formData[field.id]}
                 onChange={handleInputChange}
+                pattern={field.pattern}
+                maxLength={field.maxLength}
                 className={`peer px-4 py-3 w-full bg-transparent border-2 ${
                   fieldErrors[field.id]
                     ? "border-red-500"
@@ -273,6 +297,11 @@ function SignupForm() {
               {fieldErrors[field.id] && (
                 <p className="mt-1 text-xs text-red-600">
                   {fieldErrors[field.id]}
+                </p>
+              )}
+              {field.id === "phoneNumber" && !fieldErrors[field.id] && formData.phoneNumber && (
+                <p className="mt-1 text-xs text-gray-500">
+                  Enter 10-digit Indian mobile number (starts with 6, 7, 8, or 9)
                 </p>
               )}
             </div>

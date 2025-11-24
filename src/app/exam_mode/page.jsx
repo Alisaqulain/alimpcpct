@@ -4,7 +4,7 @@ import React, { useState, useEffect, useRef, useCallback } from "react";
 export default function CPCTPage() {
   const [section, setSection] = useState("");
   const [timeLeft, setTimeLeft] = useState(75 * 60);
-  const [isSoundOn, setIsSoundOn] = useState(true);
+  const [isSoundOn, setIsSoundOn] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [showSectionDropdown, setShowSectionDropdown] = useState(false);
   const [userName, setUserName] = useState("User");
@@ -19,8 +19,6 @@ export default function CPCTPage() {
   const [viewLanguage, setViewLanguage] = useState("English");
   const [loading, setLoading] = useState(true);
   const [completedSections, setCompletedSections] = useState(new Set());
-  const [isBreakActive, setIsBreakActive] = useState(false);
-  const [breakTimeLeft, setBreakTimeLeft] = useState(60); // 1 minute break
   const [allSectionsCompleted, setAllSectionsCompleted] = useState(false);
   const audioRef = useRef(null);
   const loggedImageQuestions = useRef(new Set()); // Track which questions we've already logged
@@ -64,6 +62,20 @@ export default function CPCTPage() {
           setLoading(false);
           return;
         }
+
+        // Check if this is a different exam than what's stored
+        // If examId changed, clear all previous exam data
+        const storedExamId = localStorage.getItem('lastExamId');
+        if (storedExamId && storedExamId !== examId) {
+          // Different exam - clear all previous data
+          localStorage.removeItem('completedSections');
+          localStorage.removeItem('examAnswers');
+          localStorage.removeItem('visitedQuestions');
+          localStorage.removeItem('markedForReview');
+          localStorage.removeItem('nextSection');
+        }
+        // Store current exam ID for next check
+        localStorage.setItem('lastExamId', examId);
 
         // Fetch exam data
         const res = await fetch(`/api/exam-questions?examId=${examId}`);
@@ -162,12 +174,55 @@ export default function CPCTPage() {
             
             setQuestions(questionsBySection);
             
-            // Set first section as default
-            if (data.data.sections.length > 0) {
-              const firstSectionName = data.data.sections[0].name;
-              setSection(firstSectionName);
-              // Mark first question of first section as visited
-              const firstQuestion = questionsBySection[firstSectionName]?.[0];
+            // Check if there's a next section to load (from break page)
+            const nextSectionName = localStorage.getItem('nextSection');
+            
+            // Check if this is a fresh exam start (not coming from break page)
+            // If no nextSection, check if examStartTime was set recently (within last 5 seconds)
+            // This indicates a fresh start from exam-login
+            const examStartTime = localStorage.getItem('examStartTime');
+            const now = Date.now();
+            const isFreshStart = !nextSectionName && examStartTime && (now - parseInt(examStartTime)) < 5000; // Within 5 seconds
+            
+            if (isFreshStart) {
+              // Fresh start - clear any old data that might exist
+              localStorage.removeItem('completedSections');
+              localStorage.removeItem('examAnswers');
+              localStorage.removeItem('visitedQuestions');
+              localStorage.removeItem('markedForReview');
+            }
+            
+            // Load completed sections from localStorage
+            const savedCompletedSections = localStorage.getItem('completedSections');
+            let completedSectionsSet = new Set();
+            if (savedCompletedSections) {
+              try {
+                completedSectionsSet = new Set(JSON.parse(savedCompletedSections));
+                setCompletedSections(completedSectionsSet);
+              } catch (e) {
+                console.error('Error loading completed sections:', e);
+              }
+            }
+            if (nextSectionName && data.data.sections.find(s => s.name === nextSectionName)) {
+              // Load the next section from break
+              localStorage.removeItem('nextSection'); // Clear it after use
+              setSection(nextSectionName);
+              // Mark first question of next section as visited
+              const nextQuestion = questionsBySection[nextSectionName]?.[0];
+              if (nextQuestion?._id) {
+                setVisitedQuestions(prev => {
+                  const newSet = new Set([...prev, nextQuestion._id]);
+                  localStorage.setItem('visitedQuestions', JSON.stringify([...newSet]));
+                  return newSet;
+                });
+              }
+            } else if (data.data.sections.length > 0) {
+              // Set first incomplete section as default, or first section if all are incomplete
+              const firstIncompleteSection = data.data.sections.find(sec => !completedSectionsSet.has(sec.name));
+              const sectionToLoad = firstIncompleteSection || data.data.sections[0];
+              setSection(sectionToLoad.name);
+              // Mark first question of section as visited
+              const firstQuestion = questionsBySection[sectionToLoad.name]?.[0];
               if (firstQuestion?._id) {
                 setVisitedQuestions(prev => {
                   const newSet = new Set([...prev, firstQuestion._id]);
@@ -180,16 +235,6 @@ export default function CPCTPage() {
             // Set timer from exam data
             if (data.data.exam.totalTime) {
               setTimeLeft(data.data.exam.totalTime * 60);
-            }
-            
-            // Load completed sections from localStorage
-            const savedCompletedSections = localStorage.getItem('completedSections');
-            if (savedCompletedSections) {
-              try {
-                setCompletedSections(new Set(JSON.parse(savedCompletedSections)));
-              } catch (e) {
-                console.error('Error loading completed sections:', e);
-              }
             }
             
             // Load saved answers from localStorage
@@ -265,6 +310,7 @@ export default function CPCTPage() {
     }, 1000);
     return () => clearInterval(interval);
   }, []);
+
 
   // Play sound each second
   useEffect(() => {
@@ -351,6 +397,18 @@ export default function CPCTPage() {
     return isLastSection && isLastQuestionInSection;
   };
 
+  // Check if all questions in current section are answered
+  const areAllQuestionsAnsweredInSection = () => {
+    if (!section || !questions[section] || questions[section].length === 0) return false;
+    return questions[section].every(q => selectedAnswers[q._id] !== undefined);
+  };
+
+  // Check if we're on the last question of current section
+  const isLastQuestionInSection = () => {
+    if (!section || !questions[section]) return false;
+    return currentQuestionIndex === (questions[section]?.length || 0) - 1;
+  };
+
   // Calculate statistics from all questions
   const calculateStatistics = () => {
     let totalAnswered = 0;
@@ -418,42 +476,53 @@ export default function CPCTPage() {
     }
   }, [markedForReview]);
 
+
   // Handle section submission
   const handleSubmitSection = () => {
-    if (!section) return;
+    if (!section || sections.length === 0) return;
     
     // Mark section as completed
-    setCompletedSections(prev => {
-      const newSet = new Set([...prev, section]);
-      localStorage.setItem('completedSections', JSON.stringify([...newSet]));
-      return newSet;
-    });
+    const updatedCompletedSections = new Set([...completedSections, section]);
+    setCompletedSections(updatedCompletedSections);
+    localStorage.setItem('completedSections', JSON.stringify([...updatedCompletedSections]));
 
     // Check if all sections are completed
-    const allCompleted = sections.every(sec => {
-      const isCompleted = sec.name === section || completedSections.has(sec.name);
-      return isCompleted;
+    const allCompleted = sections.length > 0 && sections.every(sec => {
+      return updatedCompletedSections.has(sec.name);
     });
 
-    if (allCompleted) {
+    // Only go to result if ALL sections are completed
+    if (allCompleted && updatedCompletedSections.size === sections.length) {
       setAllSectionsCompleted(true);
       // Redirect to result page after a short delay
       setTimeout(() => {
         window.location.href = "/exam/exam-result";
       }, 1000);
     } else {
-      // Start break timer before next section
-      setIsBreakActive(true);
-      setBreakTimeLeft(60);
-      const breakInterval = setInterval(() => {
-        setBreakTimeLeft(prev => {
-          if (prev <= 1) {
-            clearInterval(breakInterval);
-            return 0;
-          }
-          return prev - 1;
-          });
-      }, 1000);
+      // Find next incomplete section - always go to break page if not all completed
+      const nextSection = sections.find(sec => {
+        return !updatedCompletedSections.has(sec.name);
+      });
+      
+      // Always redirect to break page if there's a next section
+      if (nextSection) {
+        // Store next section name in localStorage for exam_mode to load after break
+        localStorage.setItem('nextSection', nextSection.name);
+        window.location.href = "/exam/break";
+      } else {
+        // This should not happen, but if it does, check again and go to result only if truly all completed
+        const trulyAllCompleted = sections.length > 0 && sections.every(sec => updatedCompletedSections.has(sec.name));
+        if (trulyAllCompleted) {
+          setAllSectionsCompleted(true);
+          setTimeout(() => {
+            window.location.href = "/exam/exam-result";
+          }, 1000);
+        } else {
+          // If somehow we can't find next section but not all completed, still go to break as fallback
+          console.warn('Could not find next section, but not all completed. Going to break page.');
+          window.location.href = "/exam/break";
+        }
+      }
     }
   };
 
@@ -546,13 +615,17 @@ export default function CPCTPage() {
                   : 'bg-[#290c52] hover:bg-cyan-700 text-white'
               }`}
             >
-              {completedSections.has(section) ? 'Section Completed' : 'Submit Section'}
+              {completedSections.has(section) 
+                ? 'Section Completed' 
+                : isLastQuestion() 
+                  ? 'Submit Exam' 
+                  : 'Submit Section'}
             </button>
           </div>
         </div>
       )}
 
-      <div className="flex-1 flex flex-col h-full overflow-hidden">
+      <div className="flex-1 flex flex-col h-full overflow-hidden lg:mr-60">
         {/* Header */}
         <div className="fixed top-0 left-0 right-0 w-full bg-[#290c52] text-white flex justify-between items-center px-4 py-2 text-sm z-30">
           <div className="font-semibold">MPCPCT 2025</div>
@@ -567,7 +640,7 @@ export default function CPCTPage() {
 
         {/* Exam Title (Mobile & Desktop) */}
         {examData && (
-          <div className="bg-white-50 border-b border-gray-300 px-4 py-4 mt-10">
+          <div className="bg-white border-b border-gray-300 px-4 py-4 mt-10">
             <h2 className="text-lg md:text-xl font-semibold text-[#290c52] text-center">
               {examData.title || 'Exam'}
             </h2>
@@ -622,7 +695,7 @@ export default function CPCTPage() {
         </div>
 
         {/* Section Nav (Desktop) */}
-        <div className="hidden lg:flex border-b px-4 py-0 border-y-gray-200 bg-[#fff] text-xs overflow-x-auto">
+        <div className="hidden lg:flex border-b border-gray-200 px-4 py-0 bg-white text-xs overflow-x-auto">
           {sections.map((sec) => (
             <button
               key={sec._id}
@@ -679,9 +752,9 @@ export default function CPCTPage() {
 
 
         {/* Question Panel */}
-      <div className="flex-grow p-4 overflow-auto bg-white-50 mt-0 md:mt-0 relativeaaaaaaaaaaaaaa">
+      <div className="flex-grow overflow-auto bg-white mt-0 md:mt-0 relative">
   {/* Fixed Top Bar */}
-  <div className="bg-[#290c52] text-white text-sm px-4 py-3 rounded-t flex justify-between flex-wrap gap-2 sticky top-[-20px] md:top-0 z-10 mb-0 md:">
+  <div className="bg-[#290c52] text-white text-sm px-4 py-3 flex justify-between flex-wrap gap-2 sticky top-0 z-20 border-b border-[#290c52]">
     <span>Question Type: MCQ</span>
     <div className="flex items-center gap-2">
       <p>View in:</p>
@@ -697,8 +770,8 @@ export default function CPCTPage() {
   </div>
 
   {/* Scrollable Content */}
-  <div className="border border-gray-300 rounded-b">
-    <div className="bg-white-50 px-4 py-3 border-b text-sm font-semibold flex flex-col sm:flex-row justify-between">
+  <div className="border-l border-r border-b border-gray-300 relative z-0">
+    <div className="bg-white px-4 py-3 border-b border-gray-300 text-sm font-semibold flex flex-col sm:flex-row justify-between">
       <span>Question No. {currentQuestionIndex + 1} {questions[section] && `of ${questions[section].length}`}</span>
       <span className="mt-1 sm:mt-0">
         Marks for correct answer: {currentQuestion?.marks || 1} | Negative Marks: <span className="text-red-500">{currentQuestion?.negativeMarks || 0}</span>
@@ -715,35 +788,6 @@ export default function CPCTPage() {
       </div>
     ) : (
       <>
-        {/* Break Modal */}
-        {isBreakActive && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-            <div className="bg-white rounded-lg p-8 max-w-md mx-4 text-center">
-              <h2 className="text-2xl font-bold mb-4 text-[#290c52]">Break Time</h2>
-              <p className="text-lg mb-4">Section "{section}" completed successfully!</p>
-              <p className="text-3xl font-bold text-blue-600 mb-4">{formatTime(breakTimeLeft)}</p>
-              <p className="text-gray-600 mb-4">Take a 1 minute break before the next section</p>
-              {breakTimeLeft === 0 && (
-                <button
-                  onClick={() => {
-                    setIsBreakActive(false);
-                    setBreakTimeLeft(60);
-                    // Move to next incomplete section
-                    const nextSection = sections.find(sec => !completedSections.has(sec.name));
-                    if (nextSection) {
-                      setSection(nextSection.name);
-                      setCurrentQuestionIndex(0);
-                    }
-                  }}
-                  className="bg-[#290c52] hover:bg-cyan-700 text-white px-6 py-2 rounded"
-                >
-                  Continue to Next Section
-                </button>
-              )}
-            </div>
-          </div>
-        )}
-
         {currentQuestion.passage_en || currentQuestion.passage_hi ? (
           <div className="flex flex-col lg:flex-row p-4 gap-x-6 gap-y-10">
             <div className="lg:w-2/3 text-sm border-r pr-4 max-h-72 overflow-y-auto">
@@ -806,8 +850,8 @@ export default function CPCTPage() {
                   <img 
                     src={encodedUrl} 
                     alt="Question Image" 
-                    className="max-w-full h-auto rounded border shadow-md"
-                    style={{ maxHeight: '500px', display: 'block' }}
+                    className="rounded border shadow-md object-contain"
+                    style={{ width: '200px', height: '200px', display: 'block' }}
                     onError={(e) => {
                       console.error('❌ Image failed to load:', {
                         originalUrl: imageUrl,
@@ -855,7 +899,7 @@ export default function CPCTPage() {
             </div>
           </div>
         ) : (
-          <div className="p-4 text-md md:text-xl mb-28">
+          <div className="p-4 text-md md:text-xl mb-28 bg-white">
             {/* Show image if question has imageUrl, otherwise show text */}
             {(() => {
               const isImageQuestion = currentQuestion?.question_en === '[Image Question]';
@@ -909,8 +953,8 @@ export default function CPCTPage() {
                   <img 
                     src={encodedUrl} 
                     alt="Question Image" 
-                    className="max-w-full h-auto rounded border shadow-md"
-                    style={{ maxHeight: '500px' }}
+                    className="rounded border shadow-md object-contain"
+                    style={{ width: '200px', height: '200px', display: 'block' }}
                     onError={(e) => {
                       console.error('❌ Image failed to load:', {
                         originalUrl: imageUrl,
@@ -971,8 +1015,11 @@ export default function CPCTPage() {
                 }
                 
                 if (isLastQuestion()) {
-                  // On last question, redirect to result page
-                  window.location.href = "/exam/exam-result";
+                  // On last question of last section, submit exam (goes to result)
+                  handleSubmitSection();
+                } else if (isLastQuestionInSection()) {
+                  // On last question of a section (but not last section), submit section (goes to break)
+                  handleSubmitSection();
                 } else {
                   // Mark for review and move to next question
                   if (currentQuestion && questions[section] && currentQuestionIndex < questions[section].length - 1) {
@@ -1057,8 +1104,12 @@ export default function CPCTPage() {
             <button 
               className={`bg-green-600 hover:bg-cyan-700 text-white px-6 py-2 text-sm rounded whitespace-nowrap ${isLastQuestion() ? 'bg-green-600' : ''}`}
               onClick={() => {
-                if (isLastQuestion()) {
-                  // On last question of section, submit section
+                // If on last question of a section, submit section (goes to break page)
+                if (isLastQuestionInSection() && !isLastQuestion()) {
+                  // Last question of a section (but not last section) - submit section and go to break
+                  handleSubmitSection();
+                } else if (isLastQuestion()) {
+                  // On last question of last section, submit exam
                   handleSubmitSection();
                 } else {
                   // Save answer and move to next question
@@ -1074,40 +1125,39 @@ export default function CPCTPage() {
                         return newSet;
                       });
                     }
-                  } else if (sections.length > 0) {
-                    // Move to next section
-                    const currentSectionIndex = sections.findIndex(s => s.name === section);
-                    if (currentSectionIndex < sections.length - 1) {
-                      const nextSection = sections[currentSectionIndex + 1];
-                      setSection(nextSection.name);
-                      setCurrentQuestionIndex(0);
-                      // Mark next section's first question as visited
-                      const nextQuestion = questions[nextSection.name]?.[0];
-                      if (nextQuestion?._id) {
-                        setVisitedQuestions(prev => {
-                          const newSet = new Set([...prev, nextQuestion._id]);
-                          localStorage.setItem('visitedQuestions', JSON.stringify([...newSet]));
-                          return newSet;
-                        });
-                      }
-                    }
                   }
                 }
               }}
             >
-              {isLastQuestion() ? " Save & Next" : "Save & Next"}
+              {isLastQuestion() 
+                ? "Save & Next" 
+                : isLastQuestionInSection() 
+                  ? "Save & Next Section" 
+                  : "Save & Next"}
             </button>
           </div>
-          <button className="bg-green-800 hover:bg-cyan-700 text-white px-12 py-2 ml-2 text-[13px] rounded w-full md:hidden">
-  <a href="/exam/exam-result">Submit Section</a>
-</button>
+          <button 
+            onClick={handleSubmitSection}
+            disabled={completedSections.has(section)}
+            className={`px-12 py-2 ml-2 text-[13px] rounded w-full md:hidden ${
+              completedSections.has(section)
+                ? 'bg-gray-400 cursor-not-allowed'
+                : 'bg-green-800 hover:bg-cyan-700 text-white'
+            }`}
+          >
+            {completedSections.has(section) 
+              ? 'Section Completed' 
+              : isLastQuestion() 
+                ? 'Submit Exam' 
+                : 'Submit Section'}
+          </button>
 
         </div>
       </div>
 
       {/* Sidebar - Desktop */}
-      <div className="hidden lg:block w-full lg:w-60 bg-blue-50 border-l shadow-lg max-h-[100vh] overflow-y-auto sticky top-0 mt-3">
-        <div className="p-4 text-sm h-full">
+      <div className="hidden lg:block w-60 bg-blue-50 border-l shadow-lg h-[100vh] overflow-y-auto fixed right-0 top-0 z-20">
+        <div className="p-4 text-sm h-full pt-16">
           <div className="flex flex-col items-center py-6">
             <img src="/lo.jpg" className="w-24 h-24 rounded-full border-2" />
             <p className="mt-2 font-semibold text-blue-800">{userName}</p>
@@ -1174,8 +1224,20 @@ export default function CPCTPage() {
             </>
           )}
         
-          <button className="bg-green-800 hover:bg-cyan-700 text-white px-12 py-2 ml-2 mt-[-4] text-[13px] rounded">
-            <a href="/exam/exam-result">Submit Section</a>
+          <button 
+            onClick={handleSubmitSection}
+            disabled={completedSections.has(section)}
+            className={`px-12 py-2 ml-2 mt-[-4] text-[13px] rounded ${
+              completedSections.has(section)
+                ? 'bg-gray-400 cursor-not-allowed'
+                : 'bg-green-800 hover:bg-cyan-700 text-white'
+            }`}
+          >
+            {completedSections.has(section) 
+              ? 'Section Completed' 
+              : isLastQuestion() 
+                ? 'Submit Exam' 
+                : 'Submit Section'}
           </button>
         </div>
       </div>

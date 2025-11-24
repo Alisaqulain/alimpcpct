@@ -62,7 +62,7 @@ export default function ExamSummary() {
         let loadedAnswers = {};
         if (answersStr) {
           try {
-            loadedAnswers = JSON.parse(answersStr);nv
+            loadedAnswers = JSON.parse(answersStr);
             setSelectedAnswers(loadedAnswers);
           } catch (error) {
             console.error('Error parsing answers:', error);
