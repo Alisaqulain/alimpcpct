@@ -8,11 +8,15 @@ export function OrganizationSchema({ siteUrl }) {
     "@context": "https://schema.org",
     "@type": "EducationalOrganization",
     "name": "MPCPCT",
-    "alternateName": "MPCPCT - CPCT, RSCIT, CCC Exam Practice Platform",
+    "alternateName": ["MPCPCT.com", "MPCPCT - CPCT, RSCIT, CCC Exam Practice Platform"],
     "url": siteUrl,
     "logo": `${siteUrl}/logo2.png`,
     "image": `${siteUrl}/logo2.png`,
-    "description": "Best CPCT, RSCIT, and CCC exam preparation platform in Indore, Madhya Pradesh. Practice typing in Hindi & English, get real-time results, comprehensive learning materials, and expert guidance.",
+    "description": "MPCPCT - The leading online platform for CPCT, RSCIT, and CCC exam preparation in Indore, Madhya Pradesh. MPCPCT offers comprehensive typing practice in Hindi & English, real-time results, expert guidance, and government job exam preparation.",
+    "brand": {
+      "@type": "Brand",
+      "name": "MPCPCT"
+    },
     "contactPoint": {
       "@type": "ContactPoint",
       "telephone": "+91-8989966753",
@@ -28,12 +32,12 @@ export function OrganizationSchema({ siteUrl }) {
       },
       "availableLanguage": ["en", "hi"]
     },
-    "sameAs": [
-      // Add social media links when available
-      // "https://www.facebook.com/mpcpct",
-      // "https://www.twitter.com/mpcpct",
-      // "https://www.linkedin.com/company/mpcpct"
-    ],
+    // Add social media links when available
+    // "sameAs": [
+    //   "https://www.facebook.com/mpcpct",
+    //   "https://www.twitter.com/mpcpct",
+    //   "https://www.linkedin.com/company/mpcpct"
+    // ],
     "address": {
       "@type": "PostalAddress",
       "addressCountry": "IN",
@@ -55,8 +59,9 @@ export function WebSiteSchema({ siteUrl }) {
     "@context": "https://schema.org",
     "@type": "WebSite",
     "name": "MPCPCT",
+    "alternateName": "MPCPCT.com",
     "url": siteUrl,
-    "description": "Practice CPCT, RSCIT, and CCC exams with bilingual support. Master typing skills for government jobs.",
+    "description": "MPCPCT - Practice CPCT, RSCIT, and CCC exams with bilingual support. Master typing skills for government jobs with MPCPCT.",
     "potentialAction": {
       "@type": "SearchAction",
       "target": {
