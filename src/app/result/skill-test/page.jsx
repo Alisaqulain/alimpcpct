@@ -325,10 +325,35 @@ function SkillTestResultContent() {
             </a>
           </div>
           {result.errors && result.errors.length > 0 && (
-            <p className="text-xl">
-              {result.errors.slice(0, 20).join(', ')}
-              {result.errors.length > 20 && ` ... and ${result.errors.length - 20} more`}
-            </p>
+            <div className="mt-3 border border-gray-300 p-3 bg-gray-50 rounded">
+              <div className="space-y-0.5">
+                {result.errors.map((error, index) => {
+                  // Parse error format: "THGe [The]" -> typed: "THGe", correct: "The"
+                  const match = error.match(/^(.+?)\s*\[(.+?)\]$/);
+                  if (match) {
+                    const [, typedWord, correctWord] = match;
+                    return (
+                      <div key={index} className="text-base leading-tight">
+                        <span className="text-red-600 font-semibold">{typedWord}</span>
+                        {' '}
+                        <span className="text-gray-700">[</span>
+                        <span className="text-green-700 font-semibold">{correctWord}</span>
+                        <span className="text-gray-700">]</span>
+                        {index < result.errors.length - 1 && ','}
+                      </div>
+                    );
+                  } else {
+                    // Fallback for errors not in expected format
+                    return (
+                      <div key={index} className="text-base leading-tight">
+                        {error}
+                        {index < result.errors.length - 1 && ','}
+                      </div>
+                    );
+                  }
+                })}
+              </div>
+            </div>
           )}
         </div>
 

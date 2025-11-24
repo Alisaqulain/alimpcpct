@@ -297,6 +297,8 @@ function TypingTutorForm() {
         const data = await res.json();
         setResultId(data.result._id);
         localStorage.setItem('lastTypingResultId', data.result._id);
+        // Redirect directly to result page
+        window.location.href = `/result/skill-test?resultId=${data.result._id}`;
       } else {
         console.error('Failed to save typing result');
       }
