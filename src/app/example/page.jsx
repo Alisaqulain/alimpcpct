@@ -1,7 +1,7 @@
 "use client";
 import React, { useState, useEffect, useCallback, useRef, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
-import { Sun, Moon, RotateCw } from "lucide-react";
+import { Sun, Moon } from "lucide-react";
 import { getLearningData, getLessonContent } from "@/lib/learningData";
 
 function KeyboardApp() {
@@ -34,40 +34,51 @@ function KeyboardApp() {
   const [userProfileUrl, setUserProfileUrl] = useState("/lo.jpg");
   const [currentRowIndex, setCurrentRowIndex] = useState(0);
   const [isRowAnimating, setIsRowAnimating] = useState(false);
-  const [showRotatePrompt, setShowRotatePrompt] = useState(false);
-  const [isLandscape, setIsLandscape] = useState(false);
+  const [keyDifficulties, setKeyDifficulties] = useState({}); // Track wrong attempts per key
 
-  // Default home row keys if no lesson
-  const defaultKeys = ["A", "S", "D", "F", "Space", "J", "K", "L", ";", "Space"];
+  // Default home row keys if no lesson (no spaces)
+  const defaultKeys = ["A", "S", "D", "F", "J", "K", "L", ";"];
   const [highlightedKeys, setHighlightedKeys] = useState(defaultKeys);
   const [keyStatus, setKeyStatus] = useState(Array(defaultKeys.length).fill(null));
 
   // Function to organize keys into rows: 4 alphabets + 1 space + 4 alphabets + 1 space
+  // Only add spaces if there are enough keys (8+), otherwise just show keys without spaces
   const organizeKeysIntoRows = (keys) => {
     const rows = [];
     const nonSpaceKeys = keys.filter(k => k !== "Space");
     
-    // Organize into rows: 4 alphabets + space + 4 alphabets + space
-    for (let i = 0; i < nonSpaceKeys.length; i += 8) {
-      const rowKeys = [];
-      
-      // First 4 alphabets
-      for (let j = 0; j < 4 && i + j < nonSpaceKeys.length; j++) {
-        rowKeys.push(nonSpaceKeys[i + j]);
+    // If there are 8 or more keys, organize with spaces for visual separation
+    // Otherwise, just show the keys without adding extra spaces
+    if (nonSpaceKeys.length >= 8) {
+      // Organize into rows: 4 alphabets + space + 4 alphabets + space
+      for (let i = 0; i < nonSpaceKeys.length; i += 8) {
+        const rowKeys = [];
+        
+        // First 4 alphabets
+        for (let j = 0; j < 4 && i + j < nonSpaceKeys.length; j++) {
+          rowKeys.push(nonSpaceKeys[i + j]);
+        }
+        
+        // First space (only if we have keys after)
+        if (i + 4 < nonSpaceKeys.length) {
+          rowKeys.push("Space");
+        }
+        
+        // Next 4 alphabets
+        for (let j = 4; j < 8 && i + j < nonSpaceKeys.length; j++) {
+          rowKeys.push(nonSpaceKeys[i + j]);
+        }
+        
+        // Second space (only if we have more keys after this row)
+        if (i + 8 < nonSpaceKeys.length) {
+          rowKeys.push("Space");
+        }
+        
+        rows.push(rowKeys);
       }
-      
-      // First space
-      rowKeys.push("Space");
-      
-      // Next 4 alphabets
-      for (let j = 4; j < 8 && i + j < nonSpaceKeys.length; j++) {
-        rowKeys.push(nonSpaceKeys[i + j]);
-      }
-      
-      // Second space
-      rowKeys.push("Space");
-      
-      rows.push(rowKeys);
+    } else {
+      // For fewer than 8 keys, just show them without adding spaces
+      rows.push(nonSpaceKeys);
     }
     
     return rows;
@@ -159,10 +170,12 @@ function KeyboardApp() {
             if (content) {
               const contentToUse = content.substring(0, 100).trim();
               // Convert content to array of characters, handling spaces
+              // Only include spaces if they're actually in the content, don't add them automatically
               const keys = [];
               for (let i = 0; i < contentToUse.length; i++) {
                 const char = contentToUse[i];
                 if (char === ' ') {
+                  // Only add space if it's actually in the content
                   keys.push("Space");
                 } else if (languageKey === 'hindi') {
                   // For Hindi, include all Unicode characters (Hindi, Devanagari, etc.)
@@ -175,15 +188,18 @@ function KeyboardApp() {
                     keys.push(char);
                   }
                 } else {
-                  // For English, use standard regex
+                  // For English, use standard regex - only include actual characters, no automatic spaces
                   if (char.match(/[a-zA-Z0-9;:'",.?!\-=\[\]\\`~@#$%^&*()_+|<>?/{}]/)) {
                     keys.push(char.toUpperCase());
                   }
                 }
               }
+              // Filter out spaces - only keep actual character keys
+              // This prevents extra spaces from being added when admin only adds characters like "asd"
+              const filteredKeys = keys.filter(key => key !== "Space");
               // Limit to reasonable number of keys (20-30 for Hindi, 50 for English)
               const maxKeys = languageKey === 'hindi' ? 30 : 50;
-              const keysToUse = keys.length > 0 ? keys.slice(0, maxKeys) : defaultKeys;
+              const keysToUse = filteredKeys.length > 0 ? filteredKeys.slice(0, maxKeys) : defaultKeys;
               setHighlightedKeys(keysToUse);
               setKeyStatus(Array(keysToUse.length).fill(null));
             } else {
@@ -227,8 +243,10 @@ function KeyboardApp() {
                       }
                     }
                   }
+                  // Filter out spaces - only keep actual character keys
+                  const filteredKeys = keys.filter(key => key !== "Space");
                   const maxKeys = languageKey === 'hindi' ? 30 : 50;
-                  const keysToUse = keys.length > 0 ? keys.slice(0, maxKeys) : defaultKeys;
+                  const keysToUse = filteredKeys.length > 0 ? filteredKeys.slice(0, maxKeys) : defaultKeys;
                   setHighlightedKeys(keysToUse);
                   setKeyStatus(Array(keysToUse.length).fill(null));
                   setLessonContent(content);
@@ -430,44 +448,11 @@ function KeyboardApp() {
       }
     };
     
-    const checkOrientation = () => {
-      if (window.innerWidth < 768) {
-        const isLandscapeMode = window.innerWidth > window.innerHeight;
-        setIsLandscape(isLandscapeMode);
-        setShowRotatePrompt(isLandscapeMode);
-      } else {
-        setIsLandscape(false);
-        setShowRotatePrompt(false);
-      }
-    };
-    
     checkIfMobile();
-    checkOrientation();
-    
-    // Also check after a short delay to ensure orientation is detected
-    const timeoutId = setTimeout(() => {
-      checkOrientation();
-    }, 100);
-    
-    const handleResize = () => {
-      checkIfMobile();
-      checkOrientation();
-    };
-    
-    const handleOrientationChange = () => {
-      // Small delay to ensure orientation change is complete
-      setTimeout(() => {
-        checkOrientation();
-      }, 100);
-    };
-    
-    window.addEventListener('resize', handleResize);
-    window.addEventListener('orientationchange', handleOrientationChange);
+    window.addEventListener('resize', checkIfMobile);
     
     return () => {
-      clearTimeout(timeoutId);
-      window.removeEventListener('resize', handleResize);
-      window.removeEventListener('orientationchange', handleOrientationChange);
+      window.removeEventListener('resize', checkIfMobile);
     };
   }, []);
 
@@ -604,6 +589,14 @@ function KeyboardApp() {
       newKeyStatus[currentIndex] = isCorrect ? 'correct' : 'wrong';
       setKeyStatus(newKeyStatus);
       
+      // Track key difficulties (wrong attempts)
+      if (!isCorrect && expectedKey) {
+        setKeyDifficulties(prev => ({
+          ...prev,
+          [expectedKey]: (prev[expectedKey] || 0) + 1
+        }));
+      }
+      
       // Set start time on first key press
       if (!startTime && currentIndex === 0) {
         setStartTime(Date.now());
@@ -663,6 +656,7 @@ function KeyboardApp() {
     setIsCompleted(false);
     setStartTime(null);
     setEndTime(null);
+    setKeyDifficulties({});
     setLeftHandImage(keyToHandImage["resting"].left);
     setRightHandImage(keyToHandImage["resting"].right);
     if (isMobile && inputRef.current) {
@@ -684,8 +678,41 @@ function KeyboardApp() {
   // Accuracy: percentage of correct keys out of total keys
   const finalAccuracy = totalCount > 0 ? Math.round((finalCorrectCount / totalCount) * 100) : 100;
   
+  // Net Speed: Gross speed adjusted for accuracy
+  const netSpeed = Math.round(finalWpm * (finalAccuracy / 100));
+  
   // Display correct count (should match totalCount when completed)
   const displayCorrectCount = isCompleted ? totalCount : correctCount;
+  
+  // Format time in minutes (e.g., "2:26 min.")
+  const formatTimeInMinutes = (seconds) => {
+    const minutes = Math.floor(seconds / 60);
+    const secs = Math.floor(seconds % 60);
+    return `${minutes}:${secs.toString().padStart(2, "0")} min.`;
+  };
+  
+  // Get all keys used in exercise with their difficulty levels
+  const getDifficultKeys = () => {
+    // Get all unique keys from highlightedKeys (excluding Space for cleaner display)
+    const uniqueKeys = [...new Set(highlightedKeys.filter(k => k !== "Space"))];
+    
+    // Map to difficulty data
+    const keysWithDifficulty = uniqueKeys.map(key => ({
+      key,
+      difficulty: keyDifficulties[key] || 0
+    }));
+    
+    // Sort by difficulty (most difficult first), show up to 15 keys
+    return keysWithDifficulty
+      .sort((a, b) => b.difficulty - a.difficulty)
+      .slice(0, 15);
+  };
+  
+  // Calculate difficulty level for a key (0-100)
+  const getKeyDifficultyLevel = (difficulty, maxDifficulty) => {
+    if (maxDifficulty === 0) return 0;
+    return Math.min(100, (difficulty / maxDifficulty) * 100);
+  };
 
   // Check for completion - separate effect to ensure it triggers
   useEffect(() => {
@@ -697,6 +724,85 @@ function KeyboardApp() {
       setEndTime(Date.now());
     }
   }, [currentIndex, highlightedKeys.length, isCompleted, startTime]);
+
+  // Save result data to localStorage when completed and redirect
+  useEffect(() => {
+    const saveAndRedirect = async () => {
+      if (isCompleted && startTime && endTime) {
+        const timeTaken = (endTime - startTime) / 1000;
+        const finalCorrectCount = totalCount;
+        const finalWpm = timeTaken > 0 ? Math.round((finalCorrectCount / timeTaken) * 60) : 0;
+        const finalAccuracy = totalCount > 0 ? Math.round((finalCorrectCount / totalCount) * 100) : 100;
+        const netSpeed = Math.round(finalWpm * (finalAccuracy / 100));
+        
+        // Get difficult keys data
+        const uniqueKeys = [...new Set(highlightedKeys.filter(k => k !== "Space"))];
+        const difficultKeysData = uniqueKeys.map(key => ({
+          key,
+          difficulty: keyDifficulties[key] || 0
+        })).sort((a, b) => b.difficulty - a.difficulty).slice(0, 15);
+        
+        // Get user name and exercise info
+        const userDataStr = localStorage.getItem('examUserData');
+        const userData = userDataStr ? JSON.parse(userDataStr) : {};
+        
+        // Get exercise/lesson name
+        let exerciseName = "";
+        if (lessonId) {
+          try {
+            const res = await fetch('/api/learning?' + new Date().getTime());
+            if (res.ok) {
+              const data = await res.json();
+              for (const section of data.sections || []) {
+                const foundLesson = section.lessons?.find(l => l.id === lessonId);
+                if (foundLesson) {
+                  exerciseName = foundLesson.name || foundLesson.title || "";
+                  break;
+                }
+              }
+            }
+          } catch (error) {
+            console.error('Error fetching lesson name:', error);
+          }
+        }
+        
+        // Get current date and time
+        const now = new Date();
+        const resultDate = now.toLocaleDateString('en-GB', { 
+          day: '2-digit', 
+          month: 'long', 
+          year: 'numeric' 
+        });
+        const resultTime = now.toLocaleTimeString('en-GB', { 
+          hour: '2-digit', 
+          minute: '2-digit' 
+        });
+        
+        // Save to localStorage for learning result page
+        const resultData = {
+          timeUsed: Math.round(timeTaken),
+          grossSpeed: finalWpm,
+          accuracy: finalAccuracy,
+          netSpeed: netSpeed,
+          difficultKeys: difficultKeysData,
+          userName: userName || userData.name || "User",
+          exerciseName: exerciseName,
+          language: language === "hindi" ? "Hindi" : "English",
+          subLanguage: subLanguage || "",
+          resultDate: resultDate,
+          resultTime: resultTime,
+          timeDuration: Math.round(timeTaken) // Save in seconds
+        };
+        
+        localStorage.setItem('learningResult', JSON.stringify(resultData));
+        
+        // Auto-redirect to learning result page immediately
+        window.location.href = '/result/learning-re';
+      }
+    };
+    
+    saveAndRedirect();
+  }, [isCompleted, startTime, endTime, totalCount, highlightedKeys, keyDifficulties, lessonId, language, subLanguage, userName]);
 
   // Update keyStatus when highlightedKeys changes
   useEffect(() => {
@@ -721,6 +827,15 @@ function KeyboardApp() {
         minHeight: '100dvh', // Dynamic viewport height for mobile
       }}
     >
+      <div
+        className={`p-4 flex flex-col md:flex-row gap-6 w-full min-h-full ${
+          isDarkMode ? "text-white" : "text-black"
+        }`}
+        style={{
+          minHeight: '100dvh',
+        }}
+        tabIndex={0}
+      >
       {/* Hidden input for mobile keyboard */}
       <input
         type="text"
@@ -731,16 +846,6 @@ function KeyboardApp() {
         autoCapitalize="off"
         spellCheck="false"
       />
-
-      <div
-        className={`p-4 flex flex-col md:flex-row gap-6 w-full min-h-full ${
-          isDarkMode ? "text-white" : "text-black"
-        }`}
-        style={{
-          minHeight: '100dvh',
-        }}
-        tabIndex={0}
-      >
 
       {/* Mobile-only elements */}
       <style jsx>{`
@@ -766,25 +871,12 @@ function KeyboardApp() {
           }
         }
         
-        @keyframes rotateArrows {
-          0% {
-            transform: rotate(0deg);
-          }
-          100% {
-            transform: rotate(360deg);
-          }
-        }
-        
         .animate-slide-in-right {
           animation: slideInRight 0.6s ease-out;
         }
         
         .animate-slide-in-right-key {
           animation: slideInRightKey 0.4s ease-out forwards;
-        }
-        
-        .animate-rotate-arrows {
-          animation: rotateArrows 3s linear infinite;
         }
         
         @media (max-width: 767px) {
@@ -812,38 +904,13 @@ function KeyboardApp() {
             width: 60px !important;
             height: 30px !important;
           }
-          /* Ensure typing prompt stays in one row on mobile */
-          .typing-prompt-mobile {
-            flex-wrap: nowrap !important;
-            overflow-x: auto !important;
-            -webkit-overflow-scrolling: touch;
+          .hand-image {
+            display: none !important;
           }
-          .typing-prompt-mobile::-webkit-scrollbar {
-            display: none;
-          }
-          /* Rotation prompt visibility */
-          .rotate-prompt-mobile {
-            display: flex !important;
-            visibility: visible !important;
-            opacity: 1 !important;
-          }
-          
-          @media (max-width: 767px) and (orientation: landscape) {
-            .rotate-prompt-mobile {
-              display: flex !important;
-              visibility: visible !important;
-              opacity: 1 !important;
-              position: fixed !important;
-              z-index: 9999 !important;
-            }
-          }
-          /* Hide hand overlay on all mobile views */
           .hand-overlay {
             display: none !important;
           }
         }
-
-        
         
         @media (max-width: 767px) and (orientation: landscape),
                (max-height: 500px) and (orientation: landscape) {
@@ -854,29 +921,6 @@ function KeyboardApp() {
             padding: 0;
             overflow: hidden;
             position: fixed;
-          }
-          /* Hide top mobile stats container in landscape */
-          .mobile-stats-container {
-            display: none !important;
-          }
-          /* Right section cards in landscape mobile - single column with 5 cards */
-          .landscape-mobile-stats {
-            display: flex !important;
-            flex-direction: column !important;
-            align-items: center !important;
-            width: 100% !important;
-            max-width: 120px !important;
-            gap: 0.5rem !important;
-          }
-          .landscape-mobile-stats > div {
-            width: 100% !important;
-            min-width: 100% !important;
-          }
-          /* Hide user profile image in landscape mobile view */
-          .user-profile-section,
-          .user-profile-image,
-          .user-profile-name {
-            display: none !important;
           }
           /* Force keyboard container to be smaller */
           .keyboard-container.mobile-scale,
@@ -979,62 +1023,96 @@ function KeyboardApp() {
       `}</style>
 
       {/* Theme Toggle Button */}
-      <div className="absolute top-16 md:top-5 right-5 md:right-5 z-50 cursor-pointer">
-        <button
-          onClick={() => setIsDarkMode(!isDarkMode)}
-          className={`p-2 rounded-full shadow text-sm cursor-pointer ${
-            isDarkMode ? "bg-white text-black" : "bg-black text-white"
-          }`}
-        >
-          {isDarkMode ? <Sun size={20} /> : <Moon size={20} />}
-        </button>
-      </div>
-
-      {/* Mobile Statistics Section - Top (Portrait only, hidden in landscape) */}
-      {isMobile && !isLandscape && (
-        <div className="md:hidden w-full flex items-center justify-center gap-4 mb-4 px-4">
-          <div className="flex-1 text-center">
-            <div className={`text-2xl font-bold ${isDarkMode ? "text-white" : "text-black"}`}>{correctCount}</div>
-            <div className={`text-xs ${isDarkMode ? "text-gray-400" : "text-gray-600"}`}>Correct</div>
-          </div>
-          <div className="flex-1 text-center">
-            <div className={`text-2xl font-bold ${isDarkMode ? "text-white" : "text-black"}`}>{wrongCount}</div>
-            <div className={`text-xs ${isDarkMode ? "text-gray-400" : "text-gray-600"}`}>Wrong</div>
-          </div>
-          <div className="flex-1 text-center">
-            <div className={`text-2xl font-bold ${isDarkMode ? "text-white" : "text-black"}`}>{totalAttempts > 0 ? Math.round((correctCount / totalAttempts) * 100) : (correctCount === 0 && wrongCount === 0 ? 0 : 100)}%</div>
-            <div className={`text-xs ${isDarkMode ? "text-gray-400" : "text-gray-600"}`}>Accuracy</div>
-          </div>
-          <div className="flex-1 text-center">
-            <div className={`text-2xl font-bold ${isDarkMode ? "text-white" : "text-black"}`}>{formatClock(timer)}</div>
-            <div className={`text-xs ${isDarkMode ? "text-gray-400" : "text-gray-600"}`}>Timer</div>
-          </div>
-        </div>
-      )}
+   <div className="absolute top-16 md:top-5 right-5 md:right-5 z-50 cursor-pointer">
+  <button
+    onClick={() => setIsDarkMode(!isDarkMode)}
+    className={`p-2 rounded-full shadow text-sm cursor-pointer ${
+      isDarkMode ? "bg-white text-black" : "bg-black text-white"
+    }`}
+  >
+    {isDarkMode ? <Sun size={20} /> : <Moon size={20} />}
+  </button>
+</div>
 
       {/* Left Section */}
       <div className="flex-1 flex flex-col items-center gap-6 mobile-stack">
-        {/* Typing Prompt Buttons - All in one row (mobile only) */}
         <div 
-          className={`flex ${isMobile ? "flex-nowrap typing-prompt-mobile" : "flex-wrap"} justify-center items-center gap-1 md:gap-2 relative ${
-            isMobile ? "overflow-x-auto mt-2 px-2" : "mobile-tight-gap"
+          key={`row-${currentRowIndex}`}
+          className={`flex flex-wrap justify-center mobile-tight-gap relative overflow-hidden ${
+            isRowAnimating ? 'animate-slide-in-right' : ''
           }`}
-          style={isMobile ? { scrollbarWidth: 'none', msOverflowStyle: 'none', WebkitOverflowScrolling: 'touch' } : {}}
         >
-          {isMobile ? (
-            // Mobile: Show all keys in one row
-            highlightedKeys.map((key, index) => {
-              const isCurrentKey = index === currentIndex;
-              const keyStatusForThisKey = keyStatus[index];
+          {(() => {
+            const currentRowKeys = getCurrentRowKeys();
+            const rows = organizeKeysIntoRows(highlightedKeys);
+            const nonSpaceKeys = highlightedKeys.filter(k => k !== "Space");
+            
+            // Calculate starting index for current row
+            const nonSpaceStartIndex = currentRowIndex * 8;
+            
+            // Map display key to original index
+            const getOriginalIndex = (displayKeyIdx) => {
+              if (currentRowKeys[displayKeyIdx] === "Space") {
+                return -1; // Display-only space
+              }
+              
+              // Calculate which non-space key this is in the row
+              // Row structure: [0,1,2,3,Space,4,5,6,7,Space]
+              let keyPosition;
+              if (displayKeyIdx < 4) {
+                keyPosition = displayKeyIdx; // First 4 keys
+              } else if (displayKeyIdx > 4 && displayKeyIdx < 9) {
+                keyPosition = displayKeyIdx - 1; // Next 4 keys (skip first space)
+              } else {
+                return -1; // Second space or invalid
+              }
+              
+              const nonSpaceKeyIndex = nonSpaceStartIndex + keyPosition;
+              if (nonSpaceKeyIndex >= nonSpaceKeys.length) return -1;
+              
+              // Find this key in original highlightedKeys
+              let nonSpaceCount = 0;
+              for (let i = 0; i < highlightedKeys.length; i++) {
+                if (highlightedKeys[i] !== "Space") {
+                  if (nonSpaceCount === nonSpaceKeyIndex) {
+                    return i;
+                  }
+                  nonSpaceCount++;
+                }
+              }
+              return -1;
+            };
+            
+            return currentRowKeys.map((key, displayIdx) => {
+              const originalIndex = getOriginalIndex(displayIdx);
+              const isCurrentKey = originalIndex === currentIndex;
+              const keyStatusForThisKey = originalIndex >= 0 ? keyStatus[originalIndex] : null;
+              
+              // Check if this key is currently being pressed
               const isPressed = pressedKey === key || (key === "Space" && (pressedKey === "Space" || pressedKey === " "));
+              
+              // Add gap after Space (before G) - displayIdx 5 is G
+              const hasGapAfterSpace = displayIdx === 5 && currentRowKeys[4] === "Space";
+              
+              // Margin classes based on position
+              let marginClass = "";
+              if (displayIdx === 0) {
+                marginClass = ""; // First key, no margin
+              } else if (hasGapAfterSpace) {
+                marginClass = "md:ml-8 ml-6"; // Large gap after Space (before G)
+              } else {
+                marginClass = "md:ml-2 ml-1.5"; // Normal gap for all other keys
+              }
               
               return (
                 <div
-                  key={index}
+                  key={`${currentRowIndex}-${displayIdx}`}
                   className={`
-                    ${key === "Space" ? "w-16 h-8" : "w-8 h-8"}
-                    rounded flex items-center justify-center text-sm font-semibold
-                    transition-all duration-150 flex-shrink-0
+                    ${key === "Space" ? "w-28 h-10 md:w-35 md:h-11 mt-2 mobile-space-key" : "w-16 h-14 mobile-small-key"}
+                    rounded flex items-center justify-center text-xl font-semibold mobile-small-text
+                    ${marginClass}
+                    transition-all duration-150
+                    ${isRowAnimating ? 'animate-slide-in-right-key' : ''}
                     ${
                       isCurrentKey && key === "Space"
                         ? "bg-blue-600 border-blue-400 border-2 text-white"
@@ -1047,114 +1125,28 @@ function KeyboardApp() {
                         : keyStatusForThisKey === "correct"
                         ? "bg-green-300 border-green-600 text-green-800"
                         : keyStatusForThisKey === "wrong"
-                        ? "bg-red-600 border-red-600 text-white"
-                        : "bg-white text-black border-gray-300"
+                        ? "bg-red-600 border-red-600"
+                        : isDarkMode
+                        ? "bg-white text-black border-white"
+                        : "bg-white text-black border-black"
                     }
                     border
                   `}
+                  style={isRowAnimating ? {
+                    animationDelay: `${displayIdx * 0.05}s`
+                  } : {}}
                 >
-                  {key === "Space" ? "Space" : key.toLowerCase()}
+                  {key === "Space" ? "Space" : key}
                 </div>
               );
-            })
-          ) : (
-            // Desktop: Use row-based layout
-            (() => {
-              const currentRowKeys = getCurrentRowKeys();
-              const rows = organizeKeysIntoRows(highlightedKeys);
-              const nonSpaceKeys = highlightedKeys.filter(k => k !== "Space");
-              
-              const nonSpaceStartIndex = currentRowIndex * 8;
-              
-              const getOriginalIndex = (displayKeyIdx) => {
-                if (currentRowKeys[displayKeyIdx] === "Space") {
-                  return -1;
-                }
-                
-                let keyPosition;
-                if (displayKeyIdx < 4) {
-                  keyPosition = displayKeyIdx;
-                } else if (displayKeyIdx > 4 && displayKeyIdx < 9) {
-                  keyPosition = displayKeyIdx - 1;
-                } else {
-                  return -1;
-                }
-                
-                const nonSpaceKeyIndex = nonSpaceStartIndex + keyPosition;
-                if (nonSpaceKeyIndex >= nonSpaceKeys.length) return -1;
-                
-                let nonSpaceCount = 0;
-                for (let i = 0; i < highlightedKeys.length; i++) {
-                  if (highlightedKeys[i] !== "Space") {
-                    if (nonSpaceCount === nonSpaceKeyIndex) {
-                      return i;
-                    }
-                    nonSpaceCount++;
-                  }
-                }
-                return -1;
-              };
-              
-              return currentRowKeys.map((key, displayIdx) => {
-                const originalIndex = getOriginalIndex(displayIdx);
-                const isCurrentKey = originalIndex === currentIndex;
-                const keyStatusForThisKey = originalIndex >= 0 ? keyStatus[originalIndex] : null;
-                const isPressed = pressedKey === key || (key === "Space" && (pressedKey === "Space" || pressedKey === " "));
-                const hasGapAfterSpace = displayIdx === 5 && currentRowKeys[4] === "Space";
-                
-                let marginClass = "";
-                if (displayIdx === 0) {
-                  marginClass = "";
-                } else if (hasGapAfterSpace) {
-                  marginClass = "md:ml-8 ml-6";
-                } else {
-                  marginClass = "md:ml-2 ml-1.5";
-                }
-                
-                return (
-                  <div
-                    key={`${currentRowIndex}-${displayIdx}`}
-                    className={`
-                      ${key === "Space" ? "w-28 h-10 md:w-35 md:h-11 mt-2 mobile-space-key" : "w-16 h-14 mobile-small-key"}
-                      rounded flex items-center justify-center text-xl font-semibold mobile-small-text
-                      ${marginClass}
-                      transition-all duration-150
-                      ${isRowAnimating ? 'animate-slide-in-right-key' : ''}
-                      ${
-                        isCurrentKey && key === "Space"
-                          ? "bg-blue-600 border-blue-400 border-2 text-white"
-                          : isCurrentKey
-                          ? "bg-blue-600 border-blue-400 border-2 text-white"
-                          : isPressed && key === "Space"
-                          ? "bg-red-600 text-white border-red-400 border-2 scale-95"
-                          : isPressed
-                          ? "bg-red-600 text-white border-red-400 border-2 scale-95"
-                          : keyStatusForThisKey === "correct"
-                          ? "bg-green-300 border-green-600 text-green-800"
-                          : keyStatusForThisKey === "wrong"
-                          ? "bg-red-600 border-red-600 text-white"
-                          : isDarkMode
-                          ? "bg-white text-black border-white"
-                          : "bg-white text-black border-black"
-                      }
-                      border
-                    `}
-                    style={isRowAnimating ? {
-                      animationDelay: `${displayIdx * 0.05}s`
-                    } : {}}
-                  >
-                    {key === "Space" ? "Space" : key.toLowerCase()}
-                  </div>
-                );
-              });
-            })()
-          )}
+            });
+          })()}
         </div>
 
-        <div className={`flex items-center ${isMobile ? "justify-center gap-3" : "gap-4"} mt-2 mobile-tight-gap mobile-small-text`}>
+        <div className="flex items-center gap-4 mt-2 mobile-tight-gap mobile-small-text">
           {/* Hand Toggle */}
-          <label className="flex items-center gap-1 md:gap-2">
-            <span className={isMobile ? "text-sm" : ""}>Hand</span>
+          <label className="flex items-center gap-0 md:gap-2">
+            Hand
             <div className="relative inline-block w-12 h-6">
               <input
                 type="checkbox"
@@ -1168,8 +1160,8 @@ function KeyboardApp() {
           </label>
 
           {/* Sound Toggle */}
-          <label className="flex items-center gap-1 md:gap-2">
-            <span className={isMobile ? "text-sm" : ""}>Sound</span>
+          <label className="flex items-center gap-0 md:gap-2">
+            Sound
             <div className="relative inline-block w-12 h-6">
               <input
                 type="checkbox"
@@ -1183,8 +1175,8 @@ function KeyboardApp() {
           </label>
 
           {/* Keyboard Toggle */}
-          <label className="flex items-center gap-1 md:gap-2">
-            <span className={isMobile ? "text-sm" : ""}>Keyboard</span>
+          <label className="flex items-center gap-0 md:gap-2">
+            Keyboard
             <div className="relative inline-block w-12 h-6">
               <input
                 type="checkbox"
@@ -1197,90 +1189,23 @@ function KeyboardApp() {
             </div>
           </label>
 
-          {/* Reset Button - Hidden on Mobile */}
-          {!isMobile && (
-            <button
-              onClick={resetStats}
-              className="ml-4 px-3 py-1 bg-blue-600 rounded hover:bg-blue-700 text-white mobile-small-text"
-            >
-              Reset
-            </button>
-          )}
+          {/* Reset Button */}
+          <button
+            onClick={resetStats}
+            className="ml-[0] md:ml-4 px-1 md:px-3 py-1 bg-blue-600 rounded hover:bg-blue-700 text-white mobile-small-text"
+          >
+            Reset
+          </button>
         </div>
-
-        {/* Rotation Prompt for Mobile Landscape - Side of Keyboard */}
-        {isMobile && isLandscape && (
-          <div className="rotate-prompt-mobile fixed right-2 top-1/2 -translate-y-1/2 z-[100] bg-gray-800/95 backdrop-blur-sm rounded-lg p-3 flex items-center gap-2 shadow-lg border border-gray-700" style={{ pointerEvents: 'none', transform: 'translateY(-50%)' }}>
-            {/* Phone Icon with Rotation Arrows */}
-            <div className="relative flex items-center justify-center w-20 h-20">
-              {/* Rotation Arrows */}
-              <svg width="80" height="80" viewBox="0 0 80 80" className="absolute inset-0 animate-rotate-arrows">
-                {/* Top Arrow - Clockwise */}
-                <path
-                  d="M 20 20 Q 40 10, 60 20"
-                  stroke="#3b82f6"
-                  strokeWidth="3"
-                  fill="none"
-                  strokeLinecap="round"
-                  className="animate-pulse"
-                  style={{ animationDuration: '2s' }}
-                />
-                <path
-                  d="M 55 18 L 60 20 L 55 22"
-                  stroke="#3b82f6"
-                  strokeWidth="3"
-                  fill="none"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                />
-                {/* Bottom Arrow - Counter-clockwise */}
-                <path
-                  d="M 60 60 Q 40 70, 20 60"
-                  stroke="#3b82f6"
-                  strokeWidth="3"
-                  fill="none"
-                  strokeLinecap="round"
-                  className="animate-pulse"
-                  style={{ animationDuration: '2s' }}
-                />
-                <path
-                  d="M 25 58 L 20 60 L 25 62"
-                  stroke="#3b82f6"
-                  strokeWidth="3"
-                  fill="none"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                />
-              </svg>
-              
-              {/* Phone Icon in Landscape */}
-              <div className="relative w-14 h-9 bg-blue-500 rounded-md border-2 border-blue-400 flex items-center justify-between px-1.5">
-                {/* Camera/Sensor */}
-                <div className="w-1.5 h-1.5 bg-blue-300 rounded-full"></div>
-                {/* Screen */}
-                <div className="flex-1 h-5 bg-blue-400 rounded mx-1"></div>
-                {/* Button/Notch */}
-                <div className="w-0.5 h-2.5 bg-blue-300 rounded"></div>
-              </div>
-            </div>
-            
-            {/* Vertical Text */}
-            <div className="flex flex-col text-white font-semibold text-sm leading-tight">
-              <span>Rotate</span>
-              <span>Your</span>
-              <span>Phone</span>
-            </div>
-          </div>
-        )}
 
         {/* Keyboard */}
         {keyboard && (
-          <div className={`relative mt-4 ${isMobile ? "p-2 w-full max-w-full" : "p-5"} border border-gray-600 rounded-3xl shadow-md keyboard-container ${
-            isDarkMode ? "bg-gray-800" : "bg-gray-200"
-          } ${isMobile ? "" : "mobile-scale"}`}>
+          <div className={`relative mt-4 p-5 border border-gray-600 rounded-3xl shadow-md keyboard-container ${
+            isDarkMode ? "bg-black" : "bg-gray-200"
+          } mobile-scale`}>
             
             {/* Dual Hand Image Overlay - positioned on top of keyboard */}
-            {hand && (leftHandImage || rightHandImage) && !isMobile && (
+            {hand && (leftHandImage || rightHandImage) && (
               <div className="absolute inset-0 pointer-events-none z-10 hand-overlay">
                 {/* Left Hand - positioned to align with A,S,D,F keys */}
                 <div className="absolute left-[-70px] top-70 transform -translate-y-1/2 -translate-x-12">
@@ -1313,7 +1238,7 @@ function KeyboardApp() {
             
             {/* Full Keyboard Layout */}
             {keys.map((row, rowIndex) => (
-              <div key={rowIndex} className={`flex ${isMobile ? "mb-1" : "mb-2.5"}`}>
+              <div key={rowIndex} className="flex mb-2.5">
                 {row.map((key, keyIndex) => {
                   // Check if space key is pressed (handle both "Space" and " " normalization)
                   const isPressed = pressedKey === key || (key === "Space" && (pressedKey === "Space" || pressedKey === " "));
@@ -1321,7 +1246,7 @@ function KeyboardApp() {
                   return (
                     <div
                       key={keyIndex}
-                      className={`${isMobile ? "h-8 text-xs" : "h-14 text-base"} ${getKeyWidth(key)} ${isMobile ? "mx-0.5" : "mx-1"} rounded flex items-center justify-center 
+                      className={`h-14 ${getKeyWidth(key)} mx-1 rounded text-base flex items-center justify-center 
                         border transition-all duration-150
                         ${
                           key === "Backspace" ? "text-red-500" :
@@ -1350,117 +1275,39 @@ function KeyboardApp() {
         )}
       </div>
 
-      {/* Completion Result Modal */}
-      {isCompleted && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className={`bg-white rounded-lg p-6 md:p-8 max-w-md w-full mx-4 ${isDarkMode ? 'bg-gray-800 text-white' : 'bg-white text-black'}`}>
-            <h2 className="text-2xl md:text-3xl font-bold text-center mb-6 text-green-600">
-              🎉 Practice Completed!
-            </h2>
-            <div className="grid grid-cols-2 gap-4 mb-6">
-              <div className="text-center p-4 bg-green-50 rounded-lg">
-                <div className="text-3xl font-bold text-green-600">{finalWpm}</div>
-                <div className="text-sm text-gray-600 mt-1">WPM</div>
-              </div>
-              <div className="text-center p-4 bg-blue-50 rounded-lg">
-                <div className="text-3xl font-bold text-blue-600">{finalAccuracy}%</div>
-                <div className="text-sm text-gray-600 mt-1">Accuracy</div>
-              </div>
-              <div className="text-center p-4 bg-purple-50 rounded-lg">
-                <div className="text-3xl font-bold text-purple-600">{Math.round(timeTaken)}s</div>
-                <div className="text-sm text-gray-600 mt-1">Time</div>
-              </div>
-              <div className="text-center p-4 bg-orange-50 rounded-lg">
-                <div className="text-3xl font-bold text-orange-600">{displayCorrectCount}/{totalCount}</div>
-                <div className="text-sm text-gray-600 mt-1">Correct/Total</div>
-              </div>
-            </div>
-            <div className="flex gap-3">
-              <button
-                onClick={resetStats}
-                className="flex-1 bg-green-500 text-white px-6 py-3 rounded-lg hover:bg-green-600 transition-colors font-semibold"
-              >
-                Try Again
-              </button>
-              <button
-                onClick={() => window.location.href = '/learning'}
-                className="flex-1 bg-blue-500 text-white px-6 py-3 rounded-lg hover:bg-blue-600 transition-colors font-semibold"
-              >
-                Back to Lessons
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
-      {/* Right Section - Hidden on Mobile Portrait, Visible on Mobile Landscape */}
-      <div className={`${isMobile && isLandscape ? "flex" : "hidden md:flex"} flex-col items-center ${isMobile && isLandscape ? "gap-2" : "space-y-1"} ${isMobile && isLandscape ? "mt-2" : "mt-15"} mobile-stack mobile-small-text`}>
-        {!isMobile || !isLandscape ? (
-          <div className="flex flex-col items-center user-profile-section user-profile-landscape">
-            <img
-              src={userProfileUrl}
-              alt="User"
-              className="w-30 h-25 rounded-md border-2 border-white mobile-scale user-profile-image"
-              onError={(e) => {
-                e.target.src = "/lo.jpg";
-              }}
-            />
-            <p className="font-semibold text-xs md:text-sm mt-1 user-profile-name">{userName}</p>
-          </div>
-        ) : null}
+      {/* Right Section */}
+      <div className="flex flex-col items-center space-y-1 mt-15 mobile-stack mobile-small-text">
+        <div className="flex flex-col items-center user-profile-landscape">
+          <img
+            src={userProfileUrl}
+            alt="User"
+            className="w-30 h-25 rounded-md border-2 border-white mobile-scale"
+            onError={(e) => {
+              e.target.src = "/lo.jpg";
+            }}
+          />
+          <p className="font-semibold text-xs md:text-sm mt-1">{userName}</p>
+        </div>
         
-        {isMobile && isLandscape ? (
-          // Landscape Mobile: Single column layout with all 5 cards
-          <div className="flex flex-col gap-2 w-full max-w-[120px] items-center landscape-mobile-stats">
-            {/* Time Card */}
-            <div className="w-full h-9 rounded-lg overflow-hidden text-center shadow-[0_1px_8px_white,0_2px_6px_silver,0_4px_10px_rgba(0,0,0,0.7)]">
-              <div className="bg-black text-white text-[10px] font-semibold py-[1px]">Time</div>
-              <div className="bg-white text-black text-sm font-bold">{formatClock(elapsedTime)}</div>
+        <div className="w-24 h-9 rounded-lg overflow-hidden text-center mt-2 shadow-[0_1px_8px_white,0_2px_6px_silver,0_4px_10px_rgba(0,0,0,0.7)] mobile-scale">
+          <div className="bg-black text-white text-[10px] font-semibold py-[1px]">Time</div>
+          <div className="bg-white text-black text-sm font-bold">{formatClock(elapsedTime)}</div>
+        </div>
+        
+        <div className="grid grid-cols-2 gap-y-6 mt-4 gap-x-4 md:gap-x-4 w-full text-center mobile-tight-gap mobile-scale stats-grid-landscape">
+          {[
+            { label: "Correct", value: correctCount, color: "text-green-600" },
+            { label: "Wrong", value: wrongCount, color: "text-red-500" },
+            { label: "Total", value: totalCount, color: "text-[#290c52]" },
+            { label: "Backspace", value: backspaceCount, color: "text-blue-500" }
+          ].map(({ label, value, color }, i) => (
+            <div key={i} className="w-full sm:w-24 h-9 rounded-lg overflow-hidden shadow-[0_1px_8px_white,0_2px_6px_silver,0_4px_10px_rgba(0,0,0,0.7)]">
+              <div className="bg-black text-white text-[10px] font-semibold py-[1px]">{label}</div>
+              <div className={`bg-white ${color} text-sm font-bold`}>{value}</div>
             </div>
-            {/* Correct Card */}
-            <div className="w-full h-9 rounded-lg overflow-hidden text-center shadow-[0_1px_8px_white,0_2px_6px_silver,0_4px_10px_rgba(0,0,0,0.7)]">
-              <div className="bg-black text-white text-[10px] font-semibold py-[1px]">Correct</div>
-              <div className="bg-white text-green-600 text-sm font-bold">{correctCount}</div>
-            </div>
-            {/* Wrong Card */}
-            <div className="w-full h-9 rounded-lg overflow-hidden text-center shadow-[0_1px_8px_white,0_2px_6px_silver,0_4px_10px_rgba(0,0,0,0.7)]">
-              <div className="bg-black text-white text-[10px] font-semibold py-[1px]">Wrong</div>
-              <div className="bg-white text-red-500 text-sm font-bold">{wrongCount}</div>
-            </div>
-            {/* Total Card */}
-            <div className="w-full h-9 rounded-lg overflow-hidden text-center shadow-[0_1px_8px_white,0_2px_6px_silver,0_4px_10px_rgba(0,0,0,0.7)]">
-              <div className="bg-black text-white text-[10px] font-semibold py-[1px]">Total</div>
-              <div className="bg-white text-[#290c52] text-sm font-bold">{totalCount}</div>
-            </div>
-            {/* Backspace Card */}
-            <div className="w-full h-9 rounded-lg overflow-hidden text-center shadow-[0_1px_8px_white,0_2px_6px_silver,0_4px_10px_rgba(0,0,0,0.7)]">
-              <div className="bg-black text-white text-[10px] font-semibold py-[1px]">Backspace</div>
-              <div className="bg-white text-blue-500 text-sm font-bold">{backspaceCount}</div>
-            </div>
-          </div>
-        ) : (
-          // Desktop: Original layout
-          <>
-            <div className="w-24 h-9 rounded-lg overflow-hidden text-center mt-2 shadow-[0_1px_8px_white,0_2px_6px_silver,0_4px_10px_rgba(0,0,0,0.7)] mobile-scale">
-              <div className="bg-black text-white text-[10px] font-semibold py-[1px]">Time</div>
-              <div className="bg-white text-black text-sm font-bold">{formatClock(elapsedTime)}</div>
-            </div>
-            
-            <div className="grid grid-cols-2 gap-y-6 mt-4 gap-x-4 md:gap-x-4 w-full text-center mobile-tight-gap mobile-scale stats-grid-landscape">
-              {[
-                { label: "Correct", value: correctCount, color: "text-green-600" },
-                { label: "Wrong", value: wrongCount, color: "text-red-500" },
-                { label: "Total", value: totalCount, color: "text-[#290c52]" },
-                { label: "Backspace", value: backspaceCount, color: "text-blue-500" }
-              ].map(({ label, value, color }, i) => (
-                <div key={i} className="w-full sm:w-24 h-9 rounded-lg overflow-hidden shadow-[0_1px_8px_white,0_2px_6px_silver,0_4px_10px_rgba(0,0,0,0.7)]">
-                  <div className="bg-black text-white text-[10px] font-semibold py-[1px]">{label}</div>
-                  <div className={`bg-white ${color} text-sm font-bold`}>{value}</div>
-                </div>
-              ))}
-            </div>
-          </>
-        )}
+          ))}
+        </div>
 
         {/* Speedometer */}
         <div className="hidden lg:block mt-5 mobile-scale">

@@ -216,10 +216,37 @@ function TypingTutorForm() {
   const [userProfileUrl, setUserProfileUrl] = useState("/lo.jpg");
   const [backspaceLimit, setBackspaceLimit] = useState(null); // null = unlimited
   const [backspaceSettings, setBackspaceSettings] = useState([]);
+  const [isMobile, setIsMobile] = useState(false);
+  const [isLandscape, setIsLandscape] = useState(false);
 
   const intervalRef = useRef(null);
   const wordRefs = useRef([]);
   const containerRef = useRef(null);
+
+  // Detect mobile and landscape orientation
+  useEffect(() => {
+    const checkMobileAndOrientation = () => {
+      const isMobileDevice = window.innerWidth < 768;
+      setIsMobile(isMobileDevice);
+      if (isMobileDevice) {
+        const isLandscapeMode = window.innerWidth > window.innerHeight;
+        setIsLandscape(isLandscapeMode);
+      } else {
+        setIsLandscape(false);
+      }
+    };
+
+    checkMobileAndOrientation();
+    window.addEventListener('resize', checkMobileAndOrientation);
+    window.addEventListener('orientationchange', () => {
+      setTimeout(checkMobileAndOrientation, 100);
+    });
+
+    return () => {
+      window.removeEventListener('resize', checkMobileAndOrientation);
+      window.removeEventListener('orientationchange', checkMobileAndOrientation);
+    };
+  }, []);
 
   const typedWords = typedText.trim().split(/\s+/);
   const correctWords = typedWords.filter((word, i) => word === words[i]);
@@ -431,6 +458,14 @@ function TypingTutorForm() {
     return `${m}:${s}`;
   };
 
+  const formatMinutes = (seconds) => {
+    return Math.floor(seconds / 60).toString().padStart(2, "0");
+  };
+
+  const formatSeconds = (seconds) => {
+    return (seconds % 60).toString().padStart(2, "0");
+  };
+
   const renderColoredWords = () => {
     let pointer = 0;
     return content.map((line, lineIndex) => {
@@ -483,24 +518,76 @@ function TypingTutorForm() {
   };
 
   return (
-    <div className="min-h-screen bg-[#290c52] bg-[url('/bg.jpg')] mt-30 md:mt-0  bg-cover bg-center bg-no-repeat px-4 py-6 md:px-14 md:py-12 md:mx-8 md:my-8 rounded-[0px] md:rounded-[100px]">
-      <div className="max-w-7xl mx-auto mt-30 md:mt-15">
+    <div className="min-h-screen bg-[#290c52] bg-[url('/bg.jpg')] mt-30 md:mt-0  bg-cover bg-center bg-no-repeat px-4 py-6 md:px-14 md:py-12 md:mx-8 md:my-8 rounded-[0px] md:rounded-[100px] typing-background-container">
+      <style jsx>{`
+        @media (max-width: 767px) and (orientation: landscape),
+               (max-height: 500px) and (orientation: landscape) {
+          html, body {
+            height: 100%;
+            width: 100%;
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            position: fixed;
+          }
+          /* Remove rounded corners and make full width in landscape mobile view */
+          .typing-background-container {
+            border-radius: 0 !important;
+            width: 100% !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            max-width: 100% !important;
+          }
+          /* Landscape mobile layout adjustments */
+          .landscape-mobile-container {
+            display: flex !important;
+            flex-direction: row !important;
+            height: 100vh !important;
+            overflow: hidden !important;
+            width: 100% !important;
+            max-width: 100% !important;
+            margin: 0 !important;
+          }
+          .landscape-mobile-typing-area {
+            flex: 1 !important;
+            overflow-y: auto !important;
+            padding: 0.5rem !important;
+          }
+          .landscape-mobile-sidebar {
+            width: 140px !important;
+            min-width: 140px !important;
+            flex-shrink: 0 !important;
+            overflow-y: auto !important;
+          }
+          /* Hide user profile in landscape mobile view */
+          .user-profile-landscape {
+            display: none !important;
+          }
+          /* Hide font size buttons in landscape mobile view */
+          .font-size-buttons-landscape {
+            display: none !important;
+          }
+        }
+      `}</style>
+      <div className={`max-w-7xl mx-auto mt-30 md:mt-15 ${isMobile && isLandscape ? "landscape-mobile-container" : ""}`}>
        <button className="hidden md:absolute md:right-22 md:top-6 border border-gray-600 text-white bg-red-500 px-4 py-1 rounded-md md:block">
   <a href="/skill_test">close</a>
 </button>
 
 
-        <div className="flex flex-col-reverse lg:flex-row gap-6">
+        <div className={`flex ${isMobile && isLandscape ? "flex-row" : "flex-col-reverse lg:flex-row"} gap-6`}>
           
           {/* Typing Area */}
-          <div className="w-[105%] lg:w-[110%]">
-          <p className="block lg:hidden text-md mb-15 text-transparent bg-clip-text bg-gradient-to-r from-purple-400 to-pink-600 text-center font-bold">
-  Typing Tutor
-  <br />
-  <span className="text-xs font-normal text-white">(Type the words as they appear below)</span>
-</p>
+          <div className={`${isMobile && isLandscape ? "landscape-mobile-typing-area" : "w-[105%] lg:w-[110%]"}`}>
+          {(!isMobile || !isLandscape) && (
+            <p className="block lg:hidden text-md mb-15 text-transparent bg-clip-text bg-gradient-to-r from-purple-400 to-pink-600 text-center font-bold">
+              Typing Tutor
+              <br />
+              <span className="text-xs font-normal text-white">(Type the words as they appear below)</span>
+            </p>
+          )}
 
-            <div className="bg-white p-4 mr-10 md:p-6 rounded-xl shadow-lg ml-5 mt-[-25]">
+            <div className={`bg-white ${isMobile && isLandscape ? "p-2" : "p-4 mr-10 md:p-6"} rounded-xl shadow-lg ${isMobile && isLandscape ? "" : "ml-5 mt-[-25]"}`}>
               {/* Results Display */}
               {isCompleted && (
                 <div className="mb-6 bg-green-50 p-4 rounded-lg border-2 border-green-500">
@@ -551,89 +638,153 @@ function TypingTutorForm() {
                 </div>
               ) : (
                 <>
-                  <div className="text-sm leading-relaxed mb-4 overflow-auto min-h-[200px] max-h-[250px] mt-4 break-words font-sans">
+                  <div className={`text-sm leading-relaxed mb-4 overflow-auto ${isMobile && isLandscape ? "min-h-[150px] max-h-[200px]" : "min-h-[200px] max-h-[250px]"} mt-4 break-words font-sans`}>
                     {renderColoredWords()}
                   </div>
                   <textarea
                     value={typedText}
                     onChange={handleChange}
                     disabled={isPaused || isCompleted}
-                    className="w-full min-h-[120px] max-h-[200px] md:min-h-[180px] md:max-h-[220px] p-2 border-t border-gray-400 rounded-md focus:outline-none mt-4 disabled:opacity-50"
-                    placeholder="Start typing here..."
+                    className={`w-full ${isMobile && isLandscape ? "min-h-[100px] max-h-[150px]" : "min-h-[120px] max-h-[200px] md:min-h-[180px] md:max-h-[220px]"} p-2 border-t border-gray-400 rounded-md focus:outline-none mt-4 disabled:opacity-50`}
+                    placeholder={isMobile && isLandscape ? "Type Here..." : "Start typing here..."}
                     style={{ fontSize: `${fontSize}px` }}
                   />
                 </>
               )}
             </div>
-            <div className="flex justify-center mt-5 gap-6 flex-wrap">
-              <button
-                onClick={handleReset}
-                className="bg-pink-500 text-lg cursor-pointer hover:bg-orange-500 text-white px-8 py-1 rounded shadow"
-              >
-                Reset
-              </button>
-              <button
-                onClick={togglePause}
-                disabled={isCompleted}
-                className="bg-blue-600 cursor-pointer text-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-white px-8 py-1 rounded shadow"
-              >
-                {isPaused ? "Resume" : "Pause"}
-              </button>
+            <div className={`flex justify-center ${isMobile && isLandscape ? "mt-2" : "mt-5"} gap-6 flex-wrap`}>
+              {!isMobile || !isLandscape ? (
+                <>
+                  <button
+                    onClick={handleReset}
+                    className="bg-pink-500 text-lg cursor-pointer hover:bg-orange-500 text-white px-8 py-1 rounded shadow"
+                  >
+                    Reset
+                  </button>
+                  <button
+                    onClick={togglePause}
+                    disabled={isCompleted}
+                    className="bg-blue-600 cursor-pointer text-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-white px-8 py-1 rounded shadow"
+                  >
+                    {isPaused ? "Resume" : "Pause"}
+                  </button>
+                </>
+              ) : null}
               <button
                 onClick={handleCompletion}
                 disabled={!startTime || isCompleted}
-                className="bg-green-600 cursor-pointer text-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed text-white px-8 py-1 rounded shadow font-semibold"
+                className={`${isMobile && isLandscape ? "bg-red-600 hover:bg-red-700" : "bg-green-600 hover:bg-green-700"} cursor-pointer text-lg disabled:opacity-50 disabled:cursor-not-allowed text-white px-8 py-1 rounded shadow font-semibold`}
               >
-                Submit
+                {isMobile && isLandscape ? "Submit Test" : "Submit"}
               </button>
             </div>
           </div>
 
           {/* Sidebar */}
-          <div className="w-full lg:w-[20%] text-white p-3 fixed top-0 mt-[-15] left-0 z-50 bg-[#290c52] bg-[url('/bg.jpg')] bg-cover bg-top bg-no-repeat lg:static lg:bg-none lg:bg-transparent">
+          <div className={`${isMobile && isLandscape ? "landscape-mobile-sidebar" : "w-full lg:w-[20%]"} text-white p-3 ${isMobile && isLandscape ? "static" : "fixed top-0 mt-[-15] left-0 z-50"} bg-[#290c52] bg-[url('/bg.jpg')] bg-cover bg-top bg-no-repeat lg:static lg:bg-none lg:bg-transparent`}>
            <button className="absolute md:hidden right-3 top-5 md:right-22 md:top-86 border border-gray-600 text-white bg-red-500 px-4 py-1 rounded-md ">
   <a href="/skill_test">close</a>
 </button>
 
             <div className="flex flex-col items-center space-y-1">
-              <img
-                src={userProfileUrl}
-                alt={userName}
-                className="w-20 h-20 md:w-30 md:h-25 rounded-md border-2 border-white"
-                onError={(e) => {
-                  e.target.src = "/lo.jpg";
-                }}
-              />
-              <p className="font-semibold text-xs">{userName}</p>
-              {backspaceLimit !== null && (
-                <p className="text-xs text-yellow-300 mt-1">
-                  Backspace: {backspaceCount}/{backspaceLimit}
-                </p>
-              )}
-              <div className="w-24 h-9 rounded-lg overflow-hidden mx-auto text-center mt-2 shadow-[0_1px_8px_white,0_2px_6px_silver,0_4px_10px_rgba(0,0,0,0.7)]">
-                <div className="bg-black text-white text-[10px] font-semibold py-[1px]">Time</div>
-                <div className="bg-white text-black text-sm font-bold">
-                  {isCompleted ? formatClock(elapsedTime) : formatClock(timeRemaining)}
+              {/* Hide profile in landscape mobile */}
+              {(!isMobile || !isLandscape) && (
+                <div className="user-profile-landscape">
+                  <img
+                    src={userProfileUrl}
+                    alt={userName}
+                    className="w-20 h-20 md:w-30 md:h-25 rounded-md border-2 border-white"
+                    onError={(e) => {
+                      e.target.src = "/lo.jpg";
+                    }}
+                  />
+                  <p className="font-semibold text-xs">{userName}</p>
+                  {backspaceLimit !== null && (
+                    <p className="text-xs text-yellow-300 mt-1">
+                      Backspace: {backspaceCount}/{backspaceLimit}
+                    </p>
+                  )}
                 </div>
-              </div>
-              <div className="grid grid-cols-2 gap-y-3 mt-2 gap-x-4 md:gap-x-15 mr-0 md:mr-10 w-[70%] md:w-full text-center">
-                {[{ label: "Correct", value: correctWords.length, color: "text-green-600" },
-                  { label: "Wrong", value: wrongWords.length, color: "text-red-500" },
-                  { label: "Total", value: words.length, color: "text-[#290c52]" },
-                  { label: "Backspace", value: backspaceCount, color: "text-blue-500" }].map(({ label, value, color }, i) => (
-                    <div key={i} className="w-full sm:w-24 h-9 rounded-lg overflow-hidden mx-auto shadow-[0_1px_8px_white,0_2px_6px_silver,0_4px_10px_rgba(0,0,0,0.7)]">
-                      <div className="bg-black text-white text-[10px] font-semibold py-[1px]">{label}</div>
-                      <div className={`bg-white ${color} text-sm font-bold`}>{value}</div>
+              )}
+
+              {/* Landscape Mobile: Single column layout with all stats */}
+              {isMobile && isLandscape ? (
+                <div className="flex flex-col gap-2 w-full max-w-[120px] items-center">
+                  {/* Correct Card */}
+                  <div className="w-full h-9 rounded-lg overflow-hidden text-center shadow-[0_1px_8px_white,0_2px_6px_silver,0_4px_10px_rgba(0,0,0,0.7)]">
+                    <div className="bg-black text-white text-[10px] font-semibold py-[1px]">Correct</div>
+                    <div className="bg-white text-green-600 text-sm font-bold">{correctWords.length}</div>
+                  </div>
+                  {/* Wrong Card */}
+                  <div className="w-full h-9 rounded-lg overflow-hidden text-center shadow-[0_1px_8px_white,0_2px_6px_silver,0_4px_10px_rgba(0,0,0,0.7)]">
+                    <div className="bg-black text-white text-[10px] font-semibold py-[1px]">Wrong</div>
+                    <div className="bg-white text-red-500 text-sm font-bold">{wrongWords.length}</div>
+                  </div>
+                  {/* Total Card */}
+                  <div className="w-full h-9 rounded-lg overflow-hidden text-center shadow-[0_1px_8px_white,0_2px_6px_silver,0_4px_10px_rgba(0,0,0,0.7)]">
+                    <div className="bg-black text-white text-[10px] font-semibold py-[1px]">Total</div>
+                    <div className="bg-white text-[#290c52] text-sm font-bold">{words.length}</div>
+                  </div>
+                  {/* Speed Card */}
+                  <div className="w-full h-9 rounded-lg overflow-hidden text-center shadow-[0_1px_8px_white,0_2px_6px_silver,0_4px_10px_rgba(0,0,0,0.7)]">
+                    <div className="bg-black text-white text-[10px] font-semibold py-[1px]">Speed</div>
+                    <div className="bg-white text-black text-sm font-bold">{wpm}</div>
+                  </div>
+                  {/* Accuracy Card */}
+                  <div className="w-full h-9 rounded-lg overflow-hidden text-center shadow-[0_1px_8px_white,0_2px_6px_silver,0_4px_10px_rgba(0,0,0,0.7)]">
+                    <div className="bg-black text-white text-[10px] font-semibold py-[1px]">Accuracy</div>
+                    <div className="bg-white text-black text-sm font-bold">{accuracy.toFixed(1)}%</div>
+                  </div>
+                  {/* Backspace Card */}
+                  <div className="w-full h-9 rounded-lg overflow-hidden text-center shadow-[0_1px_8px_white,0_2px_6px_silver,0_4px_10px_rgba(0,0,0,0.7)]">
+                    <div className="bg-black text-white text-[10px] font-semibold py-[1px]">Backspace</div>
+                    <div className="bg-white text-blue-500 text-sm font-bold">{backspaceCount}</div>
+                  </div>
+                  {/* Timer - Two separate dark blue boxes */}
+                  <div className="flex gap-2 w-full mt-1">
+                    <div className="flex-1 h-9 rounded-lg overflow-hidden text-center bg-blue-900 border-2 border-blue-700">
+                      <div className="bg-blue-800 text-white text-[10px] font-semibold py-[1px]">Min</div>
+                      <div className="bg-blue-900 text-white text-sm font-bold">
+                        {isCompleted ? formatMinutes(elapsedTime) : formatMinutes(timeRemaining)}
+                      </div>
                     </div>
-                  ))}
-              </div>
-              {isCompleted && (
-                <div className="mt-3 text-center">
-                  <div className="bg-white text-black px-4 py-2 rounded-lg shadow-md">
-                    <div className="text-xs font-semibold mb-1">Accuracy</div>
-                    <div className="text-lg font-bold text-green-600">{accuracy}%</div>
+                    <div className="flex-1 h-9 rounded-lg overflow-hidden text-center bg-blue-900 border-2 border-blue-700">
+                      <div className="bg-blue-800 text-white text-[10px] font-semibold py-[1px]">Sec</div>
+                      <div className="bg-blue-900 text-white text-sm font-bold">
+                        {isCompleted ? formatSeconds(elapsedTime) : formatSeconds(timeRemaining)}
+                      </div>
+                    </div>
                   </div>
                 </div>
+              ) : (
+                <>
+                  {/* Portrait/Desktop: Original layout */}
+                  <div className="w-24 h-9 rounded-lg overflow-hidden mx-auto text-center mt-2 md:mt-5 lg:mt-2 pt-0 md:pt-0 lg:pt-0 shadow-[0_1px_8px_white,0_2px_6px_silver,0_4px_10px_rgba(0,0,0,0.7)]">
+                    <div className="bg-black text-white text-[10px] font-semibold py-[1px]">Time</div>
+                    <div className="bg-white text-black text-sm font-bold">
+                      {isCompleted ? formatClock(elapsedTime) : formatClock(timeRemaining)}
+                    </div>
+                  </div>
+                  <div className={`flex grid-cols-1  gap-y-3 mt-2 gap-x-4  md:gap-x-15 lg:gap-x-15 mr-0 md:mr-10 w-[70%] md:w-full text-center lg:landscape:grid lg:grid-cols-2 `}>
+                    {[{ label: "Correct", value: correctWords.length, color: "text-green-600" },
+                      { label: "Wrong", value: wrongWords.length, color: "text-red-500" },
+                      { label: "Total", value: words.length, color: "text-[#290c52]" },
+                      { label: "Backspace", value: backspaceCount, color: "text-blue-500" }].map(({ label, value, color }, i) => (
+                        <div key={i} className="w-full sm:w-24 h-9 rounded-lg overflow-hidden mx-auto shadow-[0_1px_8px_white,0_2px_6px_silver,0_4px_10px_rgba(0,0,0,0.7)]">
+                          <div className="bg-black text-white text-[10px] font-semibold py-[1px]">{label}</div>
+                          <div className={`bg-white ${color} text-sm font-bold`}>{value}</div>
+                        </div>
+                      ))}
+                  </div>
+                  {isCompleted && (
+                    <div className="mt-3 text-center">
+                      <div className="bg-white text-black px-4 py-2 rounded-lg shadow-md">
+                        <div className="text-xs font-semibold mb-1">Accuracy</div>
+                        <div className="text-lg font-bold text-green-600">{accuracy}%</div>
+                      </div>
+                    </div>
+                  )}
+                </>
               )}
 
               {/* Speedometer */}
@@ -668,7 +819,7 @@ function TypingTutorForm() {
                 </div>
               </div>
 
-             <div className="hidden md:flex flex-col items-center justify-center gap-1">
+             <div className="hidden md:flex flex-col items-center justify-center gap-1 font-size-buttons-landscape">
   <p className="text-center text-sm mb-1">Font Size</p>
   <div className="flex justify-center gap-3">
     <button

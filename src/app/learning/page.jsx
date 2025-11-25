@@ -373,7 +373,7 @@ export default function TypingTutor() {
               }}
               className={`cursor-pointer py-2 rounded-md ${
                 selectedSection === section.id 
-                  ? "w-[500] bg-white text-[#290c52] font-bold pl-2" 
+                  ? "w-[200] md:w-[500] bg-white text-[#290c52] font-bold pl-2" 
                   : "w-[190px] border-none pl-2"
               }`}
             >
@@ -449,12 +449,12 @@ export default function TypingTutor() {
                           {lesson.estimatedTime}
   </span>
                         {isLocked && (
-                          <span className="text-xs bg-red-100 text-red-800 px-2 py-1 rounded">
+                          <span className="hidden md:inline-block text-xs bg-red-100 text-red-800 px-2 py-1 rounded">
                             LOCKED
                           </span>
                         )}
                         {isFree && (
-                          <span className="text-xs bg-green-100 text-green-800 px-2 py-1 rounded">
+                          <span className="hidden md:inline-block text-xs bg-green-100 text-green-800 px-2 py-1 rounded">
                             FREE
                           </span>
                         )}
